@@ -27,7 +27,7 @@ The AppImage self-updates in place (via [zsync](https://github.com/AppImage/AppI
 ## What you get
 
 - **Its own name, its own icon — your own colors.** The appearance picker in Settings works exactly like it does in stock Chromium; nothing forces a palette on top of it.
-- **Privacy defaults you don't have to hunt for.** Fingerprinting resistance, minimal referrers, reduced system info, and a handful of others are on from the start. Nothing's locked — change any of it in `chrome://flags` and it behaves like flags always have.
+- **Privacy defaults you don't have to hunt for.** Minimal referrers and a handful of others are on from the start. Fingerprinting resistance, reduced system info, and more are one click away in `chrome://flags` instead of silently defaulted — see the first-run page for the full list.
 - **HTTPS by default.** Balanced Mode upgrades navigations to HTTPS automatically, without the disruptive full-site warnings of strict HTTPS-only enforcement.
 - **Global Privacy Control sent by default.** The `Sec-GPC` opt-out signal and `navigator.globalPrivacyControl` — recognized under CCPA, but still not implemented in stock Chromium — are on for every page, no toggle needed.
 - **A first-run page that's actually useful.** Recommendations for an ad blocker, a bookmark sync tool, and a new-tab replacement — all free and open-source, none of them installed for you.
