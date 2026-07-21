@@ -38,15 +38,15 @@ runs:
     - name: Upload AppImage artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ungoogled-chromium-${{ steps.version.outputs.version }}-${{ env.ARCH }}-AppImage
-        path: build/release/ungoogled-chromium-${{ steps.version.outputs.version }}-${{ env.ARCH }}.AppImage*
+        name: aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}-AppImage
+        path: build/release/aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}.AppImage*
         if-no-files-found: error
         compression-level: 0
 
     - name: Upload tar.xz artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ungoogled-chromium-${{ steps.version.outputs.version }}-${{ env.ARCH }}-linux
-        path: build/release/ungoogled-chromium-${{ steps.version.outputs.version }}-${{ env.ARCH }}_linux.tar.xz
+        name: aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}-linux
+        path: build/release/aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}_linux.tar.xz
         if-no-files-found: error
         compression-level: 0

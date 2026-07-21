@@ -5,12 +5,12 @@ _current_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 _root_dir="$(cd "$_current_dir/.." && pwd)"
 _build_dir="$_root_dir/build"
 _release_dir="$_build_dir/release"
-_app_dir="$_release_dir/ungoogled-chromium.AppDir"
+_app_dir="$_release_dir/aerium.AppDir"
 
 _chromium_version=$(cat "$_root_dir/ungoogled-chromium/chromium_version.txt")
 _ungoogled_revision=$(cat "$_root_dir/ungoogled-chromium/revision.txt")
 
-_app_name="ungoogled-chromium"
+_app_name="aerium"
 _version="$_chromium_version-$_ungoogled_revision"
 
 _arch=$(cat "$_build_dir/src/out/Default/args.gn" \
@@ -24,7 +24,11 @@ if [ "$_arch" = "x64" ]; then
 fi
 
 _release_name="$_app_name-$_version-$_arch"
-_update_info="gh-releases-zsync|ungoogled-software|ungoogled-chromium-portablelinux|latest|$_app_name-*-$_arch.AppImage.zsync"
+# gh-releases-zsync update info: MUST point at Aerium's own repo, not
+# upstream's - appimagetool bakes this into the AppImage's self-update
+# metadata, and a stale pointer silently offers/pulls updates from the
+# wrong project.
+_update_info="gh-releases-zsync|fatih-gh|aerium-browser-linux|latest|$_app_name-*-$_arch.AppImage.zsync"
 _tarball_name="${_release_name}_linux"
 _tarball_dir="$_release_dir/$_tarball_name"
 
@@ -43,6 +47,7 @@ libvk_swiftshader.so
 libvulkan.so.1
 locales/
 product_logo_48.png
+product_logo_256.png
 resources.pak
 v8_context_snapshot.bin
 vk_swiftshader_icd.json
@@ -68,10 +73,14 @@ tar vcf - "$_tarball_name" \
 
 # create AppImage
 rm -rf "$_app_dir"
-mkdir -p "$_app_dir/opt/ungoogled-chromium/" "$_app_dir/usr/share/icons/hicolor/48x48/apps/"
-cp -r "$_tarball_dir"/* "$_app_dir/opt/ungoogled-chromium/"
-cp "$_root_dir/package/ungoogled-chromium.desktop" "$_app_dir"
-sed -i -e 's|Exec=chromium|Exec=AppRun|g' "$_app_dir/ungoogled-chromium.desktop"
+mkdir -p "$_app_dir/opt/aerium/" "$_app_dir/usr/share/icons/hicolor/48x48/apps/" "$_app_dir/usr/share/icons/hicolor/256x256/apps/"
+cp -r "$_tarball_dir"/* "$_app_dir/opt/aerium/"
+cp "$_root_dir/package/aerium.desktop" "$_app_dir"
+# The .desktop's Exec= line is deliberately left as "Exec=chromium %U" in the
+# source file (see package/aerium.desktop) so this sed keeps matching
+# regardless of app-name rebranding - it's rewritten to point at the
+# AppImage's own AppRun entrypoint either way.
+sed -i -e 's|Exec=chromium|Exec=AppRun|g' "$_app_dir/aerium.desktop"
 
 cat > "$_app_dir/AppRun" <<'EOF'
 #!/bin/sh
@@ -79,12 +88,13 @@ THIS="$(readlink -f "${0}")"
 HERE="$(dirname "${THIS}")"
 export LD_LIBRARY_PATH="${HERE}"/usr/lib:$PATH
 export CHROME_WRAPPER="${THIS}"
-"${HERE}"/opt/ungoogled-chromium/chrome "$@"
+"${HERE}"/opt/aerium/chrome "$@"
 EOF
 chmod a+x "$_app_dir/AppRun"
 
-cp "${_app_dir}/opt/ungoogled-chromium/product_logo_48.png" "$_app_dir/usr/share/icons/hicolor/48x48/apps/chromium.png"
-cp "${_app_dir}/usr/share/icons/hicolor/48x48/apps/chromium.png" "$_app_dir"
+cp "${_app_dir}/opt/aerium/product_logo_48.png" "$_app_dir/usr/share/icons/hicolor/48x48/apps/aerium.png"
+cp "${_app_dir}/opt/aerium/product_logo_256.png" "$_app_dir/usr/share/icons/hicolor/256x256/apps/aerium.png"
+cp "${_app_dir}/usr/share/icons/hicolor/256x256/apps/aerium.png" "$_app_dir"
 
 export APPIMAGETOOL_APP_NAME="$_app_name"
 export VERSION="$_version"

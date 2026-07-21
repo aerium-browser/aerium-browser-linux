@@ -16,6 +16,7 @@ rm -rf "${_src_dir}/out" || true
 fetch_sources "$clone"
 apply_patches
 apply_domsub
+apply_branding
 write_gn_args
 fix_tool_downloading
 setup_toolchain

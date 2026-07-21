@@ -80,6 +80,13 @@ apply_domsub() {
     fi
 }
 
+apply_branding() {
+    if [ ! -f "${_src_dir}/.branded.stamp" ]; then
+        python3 "${_root}/scripts/apply_branding.py"
+        touch "${_src_dir}/.branded.stamp"
+    fi
+}
+
 write_gn_args() {
     mkdir -p "${_out_dir}"
 

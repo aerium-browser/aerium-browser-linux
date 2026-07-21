@@ -7,14 +7,14 @@ runs:
     - name: Download AppImage artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: ungoogled-chromium-*-AppImage
+        pattern: aerium-*-AppImage
         path: ./release/
         merge-multiple: true
 
     - name: Download tar.xz artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: ungoogled-chromium-*-linux
+        pattern: aerium-*-linux
         path: ./release/
         merge-multiple: true
 
@@ -27,6 +27,6 @@ runs:
       with:
         fail_on_unmatched_files: true
         files: |
-          release/ungoogled-chromium-*.AppImage
-          release/ungoogled-chromium-*.AppImage.zsync
-          release/ungoogled-chromium-*_linux.tar.xz
+          release/aerium-*.AppImage
+          release/aerium-*.AppImage.zsync
+          release/aerium-*_linux.tar.xz

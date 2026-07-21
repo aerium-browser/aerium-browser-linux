@@ -9,6 +9,7 @@ if [ "$_prepare_only" = true ]; then
     fetch_sources false
     apply_patches
     apply_domsub
+    apply_branding
     write_gn_args
     fix_tool_downloading
     setup_toolchain
