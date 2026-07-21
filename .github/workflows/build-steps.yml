@@ -13,6 +13,11 @@ on:
       runs-on:
         required: true
         type: string
+      resume-run-id:
+        description: 'If set, build_part_01 resumes from this run''s last build-cache checkpoint instead of the fresh cache prep just produced.'
+        required: false
+        type: string
+        default: ''
 
 env:
   ARCH: ${{ inputs.arch }}
@@ -63,7 +68,9 @@ jobs:
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
-        with: { use-existing-image: true }
+        with:
+          use-existing-image: true
+          restore-run-id: ${{ inputs.resume-run-id }}
 
   build_part_02:
     runs-on: ${{ inputs.runs-on }}

@@ -1,8 +1,38 @@
-name: Build Linux AppImage for ungoogled-chromium
+name: Build Linux AppImage for Aerium
+
+# Aerium diverges from upstream here: upstream only builds on a version-tag
+# push (tags: '[0-9]+.[0-9]+.[0-9]+.[0-9]+-[0-9]+'). We match Windows/Android's
+# own convention instead - push-triggered + workflow_dispatch - so all three
+# platform repos behave the same way. Every run is inherently a fresh source
+# checkout at the `prep` stage (that's upstream's own design, not something we
+# changed - see build-steps.yml), so there's no separate "fresh" input the way
+# Windows/Android have one; the one thing worth resuming across runs is the
+# multi-hour compile itself if a run gets killed (e.g. an accidental
+# concurrency cancellation) - see `resume_run_id` below.
 on:
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: 'Resume compiling from this earlier run''s last completed build-cache checkpoint instead of starting build_part_01 from a fresh prep. Does not skip `prep` itself (cheap relative to the compile) - only build_part_01''s cache source.'
+        type: string
+        required: false
+        default: ''
   push:
-    tags:
-      - '[0-9]+.[0-9]+.[0-9]+.[0-9]+-[0-9]+'
+    branches: [master]
+    paths:
+      - 'scripts/**'
+      - 'docker/**'
+      - 'patches/**'
+      - 'package/**'
+      - 'flags.linux.gn'
+      - 'ungoogled-chromium'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -19,6 +49,7 @@ jobs:
     with:
       arch: ${{ matrix.arch }}
       runs-on: ubuntu-latest
+      resume-run-id: ${{ inputs.resume_run_id || '' }}
 
   release:
     name: Create release

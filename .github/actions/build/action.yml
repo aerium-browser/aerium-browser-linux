@@ -14,6 +14,10 @@ inputs:
     description: "If 'true', this job is the last and should fail if it runs out of time"
     required: false
     default: "false"
+  restore-run-id:
+    description: "If set, download the build-cache artifact from this run id instead of the current run's (download-artifact's run-id+github-token params - same-run download-artifact can't see another run's artifacts). Only meaningful together with use-existing-image: true; the Docker image itself is always taken from the current run's own `prep` job, since rebuilding it is cheap and it isn't source-tree state."
+    required: false
+    default: ""
 
 outputs:
   status:
@@ -36,11 +40,20 @@ runs:
       run: docker load -i /tmp/chromium-builder.tar
 
     - name: Download build cache
-      if: ${{ inputs.prepare-only != 'true' }}
+      if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id == '' }}
       uses: actions/download-artifact@v4
       with:
         name: build-cache-${{ env.ARCH }}
         path: .github/cache/
+
+    - name: Download build cache from another run (resume)
+      if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id != '' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: build-cache-${{ env.ARCH }}
+        path: .github/cache/
+        run-id: ${{ inputs.restore-run-id }}
+        github-token: ${{ github.token }}
 
     - name: Import build cache
       if: ${{ inputs.prepare-only != 'true' }}
