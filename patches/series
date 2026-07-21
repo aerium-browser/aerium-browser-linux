@@ -1,3 +1,5 @@
 ungoogled-chromium/portablelinux/drop-nodejs-version-check.patch
 ungoogled-chromium/portablelinux/use-oauth2-client-switches-as-default.patch
 ungoogled-chromium/portablelinux/fix-compiling-on-arm64.patch
+aerium-fatih/aerium-first-run-page.patch
+aerium-fatih/default-flags.patch

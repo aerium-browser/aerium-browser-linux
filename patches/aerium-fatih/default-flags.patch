@@ -1,0 +1,21 @@
+--- a/components/webui/flags/pref_service_flags_storage.cc
++++ b/components/webui/flags/pref_service_flags_storage.cc
+@@ -87,7 +87,17 @@
+ 
+ // static
+ void PrefServiceFlagsStorage::RegisterPrefs(PrefRegistrySimple* registry) {
+-  registry->RegisterListPref(prefs::kAboutFlagsEntries);
++  // Silently seed just this one flag by default (it's a security backstop -
++  // don't silently download-and-run a CRX/user-script MIME type without
++  // asking first - not really an opt-in "feature" the way the others are).
++  // The other recommended ungoogled-chromium/bromite flags are intentionally
++  // NOT pref-seeded here anymore; they're listed as opt-in choices on the
++  // first-run page (see aerium-first-run-page.patch) instead, so picking
++  // them is a visible decision rather than a silent default.
++  base::ListValue default_flags;
++  default_flags.Append("extension-mime-request-handling@2");
++  registry->RegisterListPref(prefs::kAboutFlagsEntries,
++                             std::move(default_flags));
+   registry->RegisterDictionaryPref(prefs::kAboutFlagsOriginLists);
+ }
+ 
