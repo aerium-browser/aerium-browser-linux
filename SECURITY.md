@@ -4,7 +4,7 @@ Aerium is maintained by a small, independent team on top of Chromium and [ungoog
 
 ## Reporting a vulnerability
 
-If you find a security issue in code specific to Aerium — the patches in `patches/aerium-fatih/`, the branding sweep in `scripts/apply_branding.py`, or the AppImage packaging in `scripts/package.sh` — please don't open a public issue. Instead, use [GitHub Security Advisories](https://github.com/fatih-gh/aerium-browser-linux/security/advisories/new) for this repo.
+If you find a security issue in code specific to Aerium — the patches in `patches/aerium-fatih/`, the branding sweep in `scripts/apply_branding.py`, or the AppImage packaging in `scripts/package.sh` — please don't open a public issue. Instead, use [GitHub Security Advisories](https://github.com/aerium-browser/aerium-browser-linux/security/advisories/new) for this repo.
 
 Include the affected version, a description of the issue, and reproduction steps if you have them. This is maintained in spare time, so please allow a reasonable window for a response.
 

@@ -28,7 +28,7 @@ _release_name="$_app_name-$_version-$_arch"
 # upstream's - appimagetool bakes this into the AppImage's self-update
 # metadata, and a stale pointer silently offers/pulls updates from the
 # wrong project.
-_update_info="gh-releases-zsync|fatih-gh|aerium-browser-linux|latest|$_app_name-*-$_arch.AppImage.zsync"
+_update_info="gh-releases-zsync|aerium-browser|aerium-browser-linux|latest|$_app_name-*-$_arch.AppImage.zsync"
 _tarball_name="${_release_name}_linux"
 _tarball_dir="$_release_dir/$_tarball_name"
 
