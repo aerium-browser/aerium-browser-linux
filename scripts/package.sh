@@ -32,6 +32,10 @@ _update_info="gh-releases-zsync|aerium-browser|aerium-browser-linux|latest|$_app
 _tarball_name="${_release_name}_linux"
 _tarball_dir="$_release_dir/$_tarball_name"
 
+# product_logo_256.png is only needed for the AppImage's hicolor icon, not
+# by the browser itself, so it isn't guaranteed to land in out/Default -
+# copy it straight from the repo's own branded source instead (identical
+# bytes to what apply_branding.py staged into the chromium tree).
 _files="chrome
 chrome_100_percent.pak
 chrome_200_percent.pak
@@ -47,7 +51,6 @@ libvk_swiftshader.so
 libvulkan.so.1
 locales/
 product_logo_48.png
-product_logo_256.png
 resources.pak
 v8_context_snapshot.bin
 vk_swiftshader_icd.json
@@ -61,6 +64,7 @@ mkdir -p "$_tarball_dir"
 for file in $_files; do
     cp -r "$_build_dir/src/out/Default/$file" "$_tarball_dir" &
 done
+cp "$_root_dir/brand/product_logo_256.png" "$_tarball_dir" &
 wait
 
 _size="$(du -sk "$_tarball_dir" | cut -f1)"
