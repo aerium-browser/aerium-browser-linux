@@ -24,6 +24,7 @@ on:
       - 'docker/**'
       - 'patches/**'
       - 'package/**'
+      - 'devutils/**'
       - 'flags.linux.gn'
       - 'ungoogled-chromium'
       - '.github/workflows/**'
