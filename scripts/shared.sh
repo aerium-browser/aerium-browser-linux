@@ -56,16 +56,6 @@ fetch_sources() {
             _host_arch_clone="amd64"
         fi
 
-        # Same depot_tools drift fix as the Windows repo's build.py: the
-        # submodule's depot_tools.patch targets an unpinned depot_tools main,
-        # which reformatted and broke the patch (see the Windows repo's
-        # devutils/depot_tools.patch header). CI never hits this (it uses the
-        # tarball path below), but a local clone.py run would. Working-tree
-        # only - nothing committed into the submodule. Keep the pin in sync
-        # with the Windows repo's _DEPOT_TOOLS_PIN.
-        cp "${_root}/devutils/depot_tools.patch" "${_main_repo}/utils/depot_tools.patch"
-        sed -i "s|'git', 'fetch', '--depth=1', 'origin', 'main'|'git', 'fetch', '--depth=1', 'origin', 'b276ddf3c75027b86715bab97ea46f1d463e087c'|" "${_main_repo}/utils/clone.py"
-
         "${_main_repo}/utils/clone.py" --sysroot "$_host_arch_clone" -o "${_src_dir}"
     else
         "${_main_repo}/utils/downloads.py" retrieve -i "${_main_repo}/downloads.ini" -c "${_dl_cache}"
