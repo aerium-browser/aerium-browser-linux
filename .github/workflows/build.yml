@@ -31,9 +31,12 @@ on:
       - '.github/actions/**'
       - '.github/scripts/**'
 
+# cancel-in-progress deliberately false, matching the Windows and Android
+# repos: a routine push must QUEUE behind a multi-hour build, not kill it.
+# To supersede a doomed run, cancel it manually first.
 concurrency:
   group: build-linux-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: write
