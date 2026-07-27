@@ -7,7 +7,10 @@ _git_submodule="ungoogled-chromium"
 
 _image="ungoogled-chromium-trixie-slim:packager"
 
-docker buildx build --load -t "${_image}" -f "${_root_dir}/docker/package.Dockerfile" .
+# Build context is the repo root, not the caller's cwd: package.Dockerfile is
+# addressed by absolute path, so a bare "." silently used whatever directory
+# the script happened to be invoked from.
+docker buildx build --load -t "${_image}" -f "${_root_dir}/docker/package.Dockerfile" "${_root_dir}/docker"
 
 [ -n "$(ls -A "${_root_dir}/${_git_submodule}" 2>/dev/null || true)" ] || git -C "${_root_dir}" submodule update --init --recursive
 

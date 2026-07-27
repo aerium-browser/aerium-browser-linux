@@ -61,11 +61,24 @@ echo "copying release files and creating $_tarball_name.tar.xz"
 
 mkdir -p "$_tarball_dir"
 
+# These copies run in parallel, so `set -e` does not see their exit codes -
+# collect the PIDs and wait on each one individually, otherwise a missing
+# build output (e.g. a target that silently didn't get built) just produces
+# an AppImage with a file quietly absent from it.
+_copy_pids=()
 for file in $_files; do
     cp -r "$_build_dir/src/out/Default/$file" "$_tarball_dir" &
+    _copy_pids+=("$!")
 done
 cp "$_root_dir/brand/product_logo_256.png" "$_tarball_dir" &
-wait
+_copy_pids+=("$!")
+
+for _pid in "${_copy_pids[@]}"; do
+    if ! wait "$_pid"; then
+        echo "error: a release file failed to copy - aborting packaging" >&2
+        exit 1
+    fi
+done
 
 _size="$(du -sk "$_tarball_dir" | cut -f1)"
 
@@ -90,7 +103,7 @@ cat > "$_app_dir/AppRun" <<'EOF'
 #!/bin/sh
 THIS="$(readlink -f "${0}")"
 HERE="$(dirname "${THIS}")"
-export LD_LIBRARY_PATH="${HERE}"/usr/lib:$PATH
+export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
 export CHROME_WRAPPER="${THIS}"
 "${HERE}"/opt/aerium/chrome "$@"
 EOF

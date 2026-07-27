@@ -23,12 +23,30 @@ Upstream (`ungoogled-software/ungoogled-chromium-portablelinux`) uses normal PRs
 6. Commit, then dispatch **Build** (`workflow_dispatch`, leave `resume_run_id` empty for a version bump — a bumped Chromium source invalidates any old run's build-cache anyway).
 7. When green, the `release` job publishes automatically.
 
-## The 8 `aerium-fatih` patches — porting status
+## The `aerium-fatih` patches — porting status
 
-Windows's `patches/ungoogled-fatih/*.patch` (8 files) are all pure Blink/content/chrome/components C++ or JSON — none touch Windows-only code (that lives separately in Windows's `build.py`/`package.py`, not in the patches themselves), so they should port with minimal adaptation. Two known adaptation points, found by direct inspection of the patch content:
+Windows's `patches/ungoogled-fatih/*.patch` are all pure Blink/content/chrome/components C++ or JSON — none touch Windows-only code (that lives separately in Windows's `build.py`/`package.py`, not in the patches themselves), so they port with minimal adaptation.
 
-- **`aerium-first-run-page.patch`** deliberately deletes the pre-existing Linux dictionary-path line (`~/.config/chromium/Dictionaries/`) from ungoogled-chromium's own upstream `first-run-page.patch`, keeping only a rewritten Windows line. Porting this to Linux means *restoring* a correctly-rebranded Linux line, not inventing one.
-- **`bundled-external-extensions.patch`** relies on `chrome::DIR_EXTERNAL_EXTENSIONS` resolving next to the main binary. Inside an AppImage's read-only, FUSE-mounted AppDir this needs verifying against the actual runtime layout (`opt/aerium/chrome`, per `scripts/package.sh`'s `AppRun`), and the `extensions/` directory needs adding to `scripts/package.sh`'s fixed `_files` list — it isn't there today. Verify by actually running a locally-built AppImage with a bundled extension present, not just by confirming the patch applies.
+**Ported and in `patches/series`** (identical files to the Windows repo, verified to apply against Chromium 150.0.7871.186 after the core ungoogled-chromium patch set):
+
+- `aerium-first-run-page.patch`
+- `aerium-first-run-url-rename.patch`
+- `default-flags.patch`
+- `aerium-battery-efficiency.patch`
+- `aerium-https-first-balanced.patch`
+- `aerium-global-privacy-control.patch`
+- `aerium-widevine-toggle.patch`
+- `aerium-search-engines.patch`
+
+Because these files are byte-identical across the two repos, a regeneration for a new Chromium tag only has to be done once — do it in the Windows repo and copy the result here (or the reverse), rather than maintaining two diverging copies.
+
+**Deliberately not ported:**
+
+- **`bundled-external-extensions.patch`** — it adds its provider inside the Windows-only branch of `external_provider_impl.cc` and relies on `chrome::DIR_EXTERNAL_EXTENSIONS` resolving next to the main binary. Inside an AppImage's read-only, FUSE-mounted AppDir that needs verifying against the actual runtime layout (`opt/aerium/chrome`, per `scripts/package.sh`'s `AppRun`), and the `extensions/` directory would need adding to `scripts/package.sh`'s fixed `_files` list. Verify by actually running a locally-built AppImage with a bundled extension present, not just by confirming the patch applies. Until then the Linux README must not claim Chrome Web Store availability.
+
+**Known adaptation point still open:**
+
+- **`aerium-first-run-page.patch`** deliberately deletes the pre-existing Linux dictionary-path line (`~/.config/chromium/Dictionaries/`) from ungoogled-chromium's own upstream `first-run-page.patch`, keeping only a rewritten Windows line. The correct Linux fix is to *restore* a rebranded Linux line, not to invent one — the patch as copied still carries the Windows-only text.
 
 ## When a patch fails to apply
 
