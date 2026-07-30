@@ -166,9 +166,13 @@ gn_gen() {
 
 maybe_build() {
     cd "${_src_dir}"
-    # xdg_mime/xdg_settings are standalone targets, not deps of "chrome" -
-    # package.sh's file list expects both (used by the desktop
-    # default-browser/mime-handler integration), so they must be built
-    # explicitly or packaging fails after the full build completes.
-    ninja -C out/Default chrome chromedriver xdg_mime xdg_settings
+    # package.sh's file list also expects xdg-mime/xdg-settings out of
+    # out/Default (used by the desktop default-browser/mime-handler
+    # integration), but those are NOT separately nameable ninja targets -
+    # they're produced as data dependencies while building "chrome" itself
+    # (verified against upstream ungoogled-chromium-portablelinux's own
+    # shared.sh, which builds only chrome+chromedriver and still packages
+    # both files successfully). Asking ninja for "xdg_mime"/"xdg_settings"
+    # by name fails with "unknown target" - there's nothing to add here.
+    ninja -C out/Default chrome chromedriver
 }

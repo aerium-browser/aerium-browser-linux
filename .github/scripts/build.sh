@@ -19,14 +19,19 @@ else
     cd "$_src_dir"
 
     set +e
-    # Target list must stay identical to shared.sh's maybe_build(): xdg_mime
-    # and xdg_settings are standalone targets, not deps of "chrome", and
-    # package.sh's fixed file list expects both. CI used to omit them, so
-    # every CI-produced AppImage was missing xdg-mime/xdg-settings (the
-    # default-browser and mime-handler integration) while local builds
-    # shipped them.
+    # Target list must stay identical to shared.sh's maybe_build(): asking
+    # ninja for "xdg_mime"/"xdg_settings" by name fails with "unknown
+    # target" - they aren't separately nameable ninja targets, they're data
+    # dependencies produced while building "chrome" itself (verified against
+    # upstream ungoogled-chromium-portablelinux's own shared.sh, which is
+    # exactly `ninja chrome chromedriver` and still successfully packages
+    # both files). An earlier revision of this script added them to the
+    # command line to fix a real gap - CI-produced AppImages really were
+    # missing xdg-mime/xdg-settings - but named them wrong; the existence
+    # checks below are the correct way to guard the same regression without
+    # asking ninja for a target that doesn't exist.
     timeout -k 5m -s INT "${_task_timeout}"s \
-        ninja -C out/Default chrome chromedriver xdg_mime xdg_settings
+        ninja -C out/Default chrome chromedriver
     rc=$?
     set -e
 
@@ -46,8 +51,9 @@ else
                 exit 1
             fi
         done
-        # xdg-mime/xdg-settings are copied-in shell scripts; only check that
-        # they exist, not that the copy preserved the exec bit.
+        # xdg-mime/xdg-settings are copied-in shell scripts produced as a
+        # side effect of building "chrome" (see the comment above); only
+        # check that they exist, not that the copy preserved the exec bit.
         for _artifact in xdg-mime xdg-settings; do
             if [ ! -e "${_out_dir}/${_artifact}" ]; then
                 echo "ninja succeeded but ${_out_dir}/${_artifact} is missing" >&2
