@@ -144,6 +144,15 @@ setup_toolchain() {
     mkdir -p "${_src_dir}/third_party/gperf/cipd/bin/"
     ln -sf "$(which gperf)" "${_src_dir}/third_party/gperf/cipd/bin/gperf"
 
+    # xdg-mime/xdg-settings are genuine system utilities (from the xdg-utils
+    # package) - Chromium only ever invokes them via PATH lookup at runtime
+    # (see kXdgSettings in chrome/browser/shell_integration_linux.cc) and
+    # never produces them under any ninja target, so package.sh's file list
+    # can only be satisfied by vendoring the system copies into out/Default,
+    # same as node/gperf above.
+    cp "$(command -v xdg-mime)" "${_out_dir}/xdg-mime"
+    cp "$(command -v xdg-settings)" "${_out_dir}/xdg-settings"
+
     local clang_bin="${_src_dir}/third_party/llvm-build/Release+Asserts/bin"
     export CC="${clang_bin}/clang"
     export CXX="${clang_bin}/clang++"
