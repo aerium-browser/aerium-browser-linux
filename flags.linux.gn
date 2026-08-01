@@ -1,4 +1,5 @@
 is_official_build=true
+chrome_pgo_phase=2
 symbol_level=0
 disable_fieldtrial_testing_config=true
 blink_enable_generated_code_formatting=false
