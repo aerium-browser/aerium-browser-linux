@@ -12,6 +12,7 @@ if [ "$_prepare_only" = true ]; then
     apply_branding
     write_gn_args
     fix_tool_downloading
+    provide_dawn_go
     setup_toolchain
     gn_gen
 else

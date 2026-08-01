@@ -38,7 +38,42 @@ setup_paths() {
     _out_dir="${_src_dir}/out/Default"
     setup_arch
 
+    # Go (see provide_dawn_go) refuses to run without a writable build cache,
+    # and the container runs as the host's uid with no real home directory, so
+    # its default ~/.cache path isn't writable. Keep these OUT of ${_build_dir}:
+    # export-cache.sh tars that whole directory into the inter-stage artifact.
+    export GOCACHE="${TMPDIR:-/tmp}/aerium-gocache"
+    export GOPATH="${TMPDIR:-/tmp}/aerium-gopath"
+
     mkdir -p "${_dl_cache}"
+}
+
+# Dawn's Tint build step shells out to a Go program to generate real production
+# sources (lang/core/enums.cc, intrinsic/data.cc, ...), from a toolchain it
+# expects at third_party/dawn/tools/golang/<host-platform>/bin/go. That comes
+# from a cipd entry in dawn's *own* DEPS, so gclient checkouts get it for free
+# but our tarball checkout does not, and the build dies with:
+#   FileNotFoundError: '.../third_party/dawn/tools/golang/linux-amd64/bin/go'
+# Point that path at the distro Go installed in the build image instead.
+provide_dawn_go() {
+    local _go _plat _dest
+    _go="$(command -v go || true)"
+    if [ -z "$_go" ]; then
+        echo "provide_dawn_go: no 'go' on PATH (is golang-go installed in the build image?)" >&2
+        return 1
+    fi
+
+    # Host platform, not target: this generator runs on the build machine even
+    # when cross-compiling to arm64.
+    case "$(uname -m)" in
+        x86_64) _plat=linux-amd64 ;;
+        aarch64) _plat=linux-arm64 ;;
+        *) echo "provide_dawn_go: unhandled host arch $(uname -m)" >&2; return 1 ;;
+    esac
+
+    _dest="${_src_dir}/third_party/dawn/tools/golang/${_plat}/bin"
+    mkdir -p "${_dest}"
+    ln -sf "${_go}" "${_dest}/go"
 }
 
 fetch_sources() {

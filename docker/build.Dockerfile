@@ -28,7 +28,10 @@ RUN apt-get -y install bison debhelper desktop-file-utils flex gperf gsettings-d
   uuid-dev valgrind wdiff x11-apps xcb-proto xdg-utils xfonts-base xvfb xz-utils yasm
 
 # install additional packages needed when cloning the chromium repo (and sudo and vim for convenience)
-RUN apt-get -y install git python3-httplib2 python3-pyparsing python3-six rsync sudo vim
+# golang-go: dawn/tint generates real production sources with a Go program.
+# gclient would supply that toolchain as a cipd dep of dawn's own DEPS, which a
+# source tarball doesn't carry - see provide_dawn_go() in scripts/shared.sh.
+RUN apt-get -y install git golang-go python3-httplib2 python3-pyparsing python3-six rsync sudo vim
 
 # create builder user
 RUN groupadd -g 1000 builder && useradd -d /home/builder -g 1000 -u 1000 -m builder
