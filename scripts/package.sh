@@ -32,6 +32,32 @@ _update_info="gh-releases-zsync|aerium-browser|aerium-browser-linux|latest|$_app
 _tarball_name="${_release_name}_linux"
 _tarball_dir="$_release_dir/$_tarball_name"
 
+# Chromium Web Store extension (https://github.com/NeverDecaf/chromium-web-store).
+# chrome::DIR_EXTERNAL_EXTENSIONS resolves to DIR_MODULE/extensions on Linux
+# (chrome/common/chrome_paths.cc) with no admin/root ownership requirement,
+# and stock Chromium already scans that directory for external-pref JSON
+# files (chrome/browser/extensions/external_provider_impl.cc's non-Windows
+# branch) - so unlike Windows this needs no source patch, just the crx and
+# a manifest staged into out/Default/extensions before packaging.
+_cws_id="ocaahdebbfolfmndjeplogmgcagdmblk"
+_cws_version="1.5.5.3"
+_cws_sha256="326443baec3d204b1358eba6aa025cf6bd930c08a0b98f6784e7a3236528445b"
+_cws_dir="$_build_dir/src/out/Default/extensions"
+mkdir -p "$_cws_dir"
+if [ ! -f "$_cws_dir/chromium_web_store.crx" ]; then
+    curl -sSL -o "$_cws_dir/chromium_web_store.crx" \
+        "https://github.com/NeverDecaf/chromium-web-store/releases/download/v${_cws_version}/Chromium.Web.Store.crx"
+fi
+echo "${_cws_sha256}  ${_cws_dir}/chromium_web_store.crx" | sha256sum -c -
+cat > "$_cws_dir/chromium_web_store.json" <<EOF
+{
+  "${_cws_id}": {
+    "external_crx": "chromium_web_store.crx",
+    "external_version": "${_cws_version}"
+  }
+}
+EOF
+
 # product_logo_256.png is only needed for the AppImage's hicolor icon, not
 # by the browser itself, so it isn't guaranteed to land in out/Default -
 # copy it straight from the repo's own branded source instead (identical
@@ -42,6 +68,7 @@ chrome_200_percent.pak
 chrome_crashpad_handler
 chromedriver
 chrome-wrapper
+extensions/
 icudtl.dat
 libEGL.so
 libGLESv2.so
