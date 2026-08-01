@@ -14,18 +14,11 @@ name: Fast build (self-hosted Azure)
 # AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP,
 # AZURE_VM_NAME.
 
+# Manual dispatch only - builds are triggered from GitHub (Actions tab),
+# never automatically on push/commit. This keeps the VM from spinning up on
+# every routine push; you decide when a build actually happens.
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - 'scripts/**'
-      - 'docker/**'
-      - 'patches/**'
-      - 'package/**'
-      - 'flags.linux.gn'
-      - 'ungoogled-chromium'
-      - '.github/workflows/fast-build.yml'
 
 permissions:
   id-token: write
