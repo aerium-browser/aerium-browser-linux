@@ -1,0 +1,119 @@
+name: Fast build (self-hosted Azure)
+
+# On-demand self-hosted architecture: starts the Azure Linux VM, builds
+# directly on its persistent disk (no artifact-relay checkpointing needed -
+# the same filesystem persists across the whole build and across runs, so
+# ninja's own incremental tracking does the resuming), publishes a release,
+# then deallocates the VM regardless of outcome. x86_64 only for now - the
+# VM is an x86_64 host; arm64 would need a second (ARM) VM or cross-compile
+# setup, not wired up here.
+#
+# Setup required before this can run: see the self-hosted-runner-setup.md
+# guide (Azure OIDC app registration, least-privilege RBAC role, runner
+# registration on the VM). Needs repo variables AZURE_CLIENT_ID,
+# AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP,
+# AZURE_VM_NAME.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/**'
+      - 'docker/**'
+      - 'patches/**'
+      - 'package/**'
+      - 'flags.linux.gn'
+      - 'ungoogled-chromium'
+      - '.github/workflows/fast-build.yml'
+
+permissions:
+  id-token: write
+  contents: write
+
+concurrency:
+  group: fast-build-linux
+  cancel-in-progress: false
+
+jobs:
+  start-vm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az vm start --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AZURE_VM_NAME }}"
+
+  build:
+    needs: start-vm
+    runs-on: [self-hosted, azure-linux-builder]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Prepare (fetch, patch, gn gen)
+        run: |
+          set -euo pipefail
+          export _prepare_only=true
+          bash .github/scripts/build.sh
+
+      - name: Build (loops the existing 5h-chunked script until it reports completed)
+        run: |
+          set -euo pipefail
+          export _prepare_only=false
+          export _gha_final=false
+          while true; do
+            set +e
+            bash .github/scripts/build.sh
+            rc=$?
+            set -e
+            status="$(grep -o 'status=[a-z]*' "$GITHUB_OUTPUT" | tail -n1 || true)"
+            if [ "$rc" -ne 0 ] && [ "$status" != "status=running" ]; then
+              echo "build.sh failed (exit $rc) - not a timeout-to-resume case" >&2
+              exit "$rc"
+            fi
+            if [ "$status" = "status=completed" ]; then
+              echo "build finished"
+              break
+            fi
+            echo "stage timed out, resuming (ninja continues incrementally)"
+          done
+
+      - name: Package (AppImage + tarball)
+        run: bash scripts/package.sh
+
+      - name: Resolve version and tag
+        id: meta
+        run: |
+          set -euo pipefail
+          version="$(ls build/release/aerium-*.AppImage | head -n1 | sed -E 's#.*/aerium-(.+)-(arm64|x86_64)\.AppImage$#\1#')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}-b${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1, pinned commit hash
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: Aerium ${{ steps.meta.outputs.version }}
+          fail_on_unmatched_files: true
+          files: |
+            build/release/aerium-*.AppImage
+            build/release/aerium-*.AppImage.zsync
+            build/release/aerium-*_linux.tar.xz
+
+  stop-vm:
+    needs: [start-vm, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: |
+          az vm deallocate --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" --name "${{ vars.AZURE_VM_NAME }}"

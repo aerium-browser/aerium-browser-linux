@@ -9,6 +9,10 @@ name: Build Linux AppImage for Aerium
 # Windows/Android have one; the one thing worth resuming across runs is the
 # multi-hour compile itself if a run gets killed (e.g. an accidental
 # concurrency cancellation) - see `resume_run_id` below.
+# Deactivated (not deleted) in favor of fast-build.yml's self-hosted Azure
+# runner architecture - the push trigger is removed so this no longer runs
+# automatically, but workflow_dispatch is kept as a manual fallback in case
+# the self-hosted path is ever unavailable.
 on:
   workflow_dispatch:
     inputs:
@@ -17,19 +21,6 @@ on:
         type: string
         required: false
         default: ''
-  push:
-    branches: [master]
-    paths:
-      - 'scripts/**'
-      - 'docker/**'
-      - 'patches/**'
-      - 'package/**'
-      - 'devutils/**'
-      - 'flags.linux.gn'
-      - 'ungoogled-chromium'
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - '.github/scripts/**'
 
 # cancel-in-progress deliberately false, matching the Windows and Android
 # repos: a routine push must QUEUE behind a multi-hour build, not kill it.
