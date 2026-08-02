@@ -13,3 +13,4 @@ aerium-fatih/aerium-remove-autofill-passwords-menu.patch
 aerium-fatih/aerium-people-page-rebrand.patch
 aerium-fatih/fix-metrics-histograms-xml-non-git-checkout.patch
 aerium-fatih/aerium-remove-translate-settings.patch
+aerium-fatih/aerium-remove-passwords-autofill-app-menu.patch
