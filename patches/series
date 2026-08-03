@@ -15,3 +15,5 @@ aerium-fatih/fix-metrics-histograms-xml-non-git-checkout.patch
 aerium-fatih/aerium-remove-translate-settings.patch
 aerium-fatih/aerium-remove-passwords-autofill-app-menu.patch
 aerium-fatih/aerium-clear-browsing-data-on-exit.patch
+aerium-fatih/aerium-about-page-project-url.patch
+aerium-fatih/aerium-appimage-bundled-extensions.patch

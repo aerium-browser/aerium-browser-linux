@@ -1,0 +1,42 @@
+Auto-acknowledge bundled external extensions on Linux.
+
+package.sh stages the Chromium Web Store extension into
+out/Default/extensions as an external-pref CRX, which lands in the
+AppImage at opt/aerium/extensions - the directory Chromium resolves
+chrome::DIR_EXTERNAL_EXTENSIONS to (DIR_MODULE/extensions), with no
+admin-ownership check on Linux.
+
+The extension was still not usable on a fresh launch, because the
+provider for that directory never acknowledges what it finds. An
+unacknowledged external extension is installed but held disabled
+behind an external-install prompt, so the web store simply is not
+there. The Windows repo already had to call set_auto_acknowledge for
+its own bundled provider; this is the same fix for the Linux path.
+
+--- a/chrome/browser/extensions/external_provider_impl.cc
++++ b/chrome/browser/extensions/external_provider_impl.cc
+@@ -855,14 +855,22 @@
+     registry_provider->set_allow_updates(true);
+     provider_list->push_back(std::move(registry_provider));
+ #else
+-    provider_list->push_back(std::make_unique<ExternalProviderImpl>(
++    // Aerium: auto-acknowledge this source. The AppImage ships the Chromium
++    // Web Store extension as an external-pref CRX in DIR_EXTERNAL_EXTENSIONS
++    // (DIR_MODULE/extensions), and without acknowledgement an external
++    // extension is installed but left disabled pending an "external install"
++    // prompt, so a fresh AppImage launch shows no web store. Windows already
++    // needed the same treatment for its bundled provider.
++    auto bundled_pref_provider = std::make_unique<ExternalProviderImpl>(
+         service,
+         base::MakeRefCounted<ExternalPrefLoader>(
+             chrome::DIR_EXTERNAL_EXTENSIONS, check_admin_permissions_on_mac,
+             nullptr),
+         profile, ManifestLocation::kExternalPref,
+         ManifestLocation::kExternalPrefDownload,
+-        bundled_extension_creation_flags));
++        bundled_extension_creation_flags);
++    bundled_pref_provider->set_auto_acknowledge(true);
++    provider_list->push_back(std::move(bundled_pref_provider));
+ 
+     // Define a per-user source of external extensions.
+ #if BUILDFLAG(IS_MAC) || ((BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)) && \
