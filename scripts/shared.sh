@@ -178,6 +178,8 @@ setup_toolchain() {
     ln -sf "$(which node)" "${_src_dir}/third_party/node/linux/node-linux-x64/bin/node"
     mkdir -p "${_src_dir}/third_party/gperf/cipd/bin/"
     ln -sf "$(which gperf)" "${_src_dir}/third_party/gperf/cipd/bin/gperf"
+    mkdir -p "${_src_dir}/third_party/dawn/tools/golang/linux-amd64/bin"
+    ln -sf "$(which go)" "${_src_dir}/third_party/dawn/tools/golang/linux-amd64/bin/go"
 
     # xdg-mime/xdg-settings are genuine system utilities (from the xdg-utils
     # package) - Chromium only ever invokes them via PATH lookup at runtime
