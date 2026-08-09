@@ -21,3 +21,4 @@ aerium-fatih/aerium-remove-google-services-section.patch
 aerium-fatih/aerium-first-run-setup.patch
 aerium-fatih/aerium-https-first-balanced-auto-enable.patch
 aerium-fatih/aerium-remove-live-translate.patch
+aerium-fatih/aerium-clear-on-exit-site-exclusions.patch
