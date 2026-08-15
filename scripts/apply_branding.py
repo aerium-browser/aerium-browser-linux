@@ -81,6 +81,32 @@ def apply_branding():
     (theme_dir / 'product_logo.svg').write_bytes((brand_dir / 'product_logo.svg').read_bytes())
     for png_path in brand_dir.glob('product_logo_*.png'):
         (theme_dir / png_path.name).write_bytes(png_path.read_bytes())
+
+    # In-app logo served by chrome://theme/current-channel-logo, which is what
+    # the About page (chrome://settings/help) renders. That URL resolves to
+    # IDR_PRODUCT_LOGO_32, declared in chrome/app/theme/theme_resources.grd as
+    # a "chrome_scaled_image" structure. Scaled-image structures are NOT read
+    # from chrome/app/theme/chromium/ - grit's ChromeScaledImage gatherer
+    # prefixes the declared path with the output context directory, so the
+    # bytes actually packed come from
+    #   chrome/app/theme/default_<scale>_percent/chromium/product_logo_32.png
+    # and the copy made into chrome/app/theme/chromium/ above is never read
+    # for this resource (upstream does not even ship a 32px file there). The
+    # 1x pak takes the 32px asset and the 2x pak the 64px one, matching the
+    # @1x/@2x srcset the About page requests; the 300% pak falls back to 100%
+    # via fallback_to_low_resolution. The Windows repo already does the
+    # equivalent copy in build.py:_apply_branding() from brand/inapp/, which
+    # is why the About page logo is correct there and was not here.
+    scaled_logo_sources = {
+        'default_100_percent': 'product_logo_32.png',  # 32x32
+        'default_200_percent': 'product_logo_64.png',  # 64x64
+    }
+    for scale_dir, source_name in scaled_logo_sources.items():
+        scale_dst = source_tree / 'chrome' / 'app' / 'theme' / scale_dir / 'chromium'
+        scale_dst.mkdir(parents=True, exist_ok=True)
+        (scale_dst / 'product_logo_32.png').write_bytes(
+            (brand_dir / source_name).read_bytes())
+
     webui_logo_dst = source_tree / 'ui' / 'webui' / 'resources' / 'images' / 'chrome_logo_dark.svg'
     if webui_logo_dst.parent.exists():
         webui_logo_dst.write_bytes((brand_dir / 'chrome_logo_dark.svg').read_bytes())
