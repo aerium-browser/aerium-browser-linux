@@ -82,30 +82,60 @@ def apply_branding():
     for png_path in brand_dir.glob('product_logo_*.png'):
         (theme_dir / png_path.name).write_bytes(png_path.read_bytes())
 
-    # In-app logo served by chrome://theme/current-channel-logo, which is what
-    # the About page (chrome://settings/help) renders. That URL resolves to
-    # IDR_PRODUCT_LOGO_32, declared in chrome/app/theme/theme_resources.grd as
-    # a "chrome_scaled_image" structure. Scaled-image structures are NOT read
-    # from chrome/app/theme/chromium/ - grit's ChromeScaledImage gatherer
-    # prefixes the declared path with the output context directory, so the
-    # bytes actually packed come from
-    #   chrome/app/theme/default_<scale>_percent/chromium/product_logo_32.png
-    # and the copy made into chrome/app/theme/chromium/ above is never read
-    # for this resource (upstream does not even ship a 32px file there). The
-    # 1x pak takes the 32px asset and the 2x pak the 64px one, matching the
-    # @1x/@2x srcset the About page requests; the 300% pak falls back to 100%
-    # via fallback_to_low_resolution. The Windows repo already does the
-    # equivalent copy in build.py:_apply_branding() from brand/inapp/, which
-    # is why the About page logo is correct there and was not here.
-    scaled_logo_sources = {
-        'default_100_percent': 'product_logo_32.png',  # 32x32
-        'default_200_percent': 'product_logo_64.png',  # 64x64
+    # In-app logos packed into the theme_resources_*.pak files. These are
+    # "chrome_scaled_image" structures in chrome/app/theme/theme_resources.grd
+    # and are NOT read from chrome/app/theme/chromium/ - grit's
+    # ChromeScaledImage gatherer prefixes the path declared in the grd with the
+    # output context directory, so the bytes actually packed come from
+    #   chrome/app/theme/default_<scale>_percent/<path declared in the grd>
+    # and the copies made into chrome/app/theme/chromium/ above are never read
+    # for these resources (upstream does not even ship a 32px file there).
+    #
+    # Mind the declared paths - they are not all the same shape, and two of
+    # them differ from the Windows repo's:
+    #   IDR_PRODUCT_LOGO_32        chromium/product_logo_32.png
+    #     chrome://theme/current-channel-logo, i.e. the About page
+    #     (chrome://settings/help) logo.
+    #   IDR_PRODUCT_LOGO_16        chromium/linux/product_logo_16.png
+    #     The is_linux branch of the grd puts this one under linux/, unlike
+    #     every other platform. Used for the task manager's browser row
+    #     (browser_process_task.cc) and the window/tab icon fallback
+    #     (tab_icon_view.cc).
+    #   IDR_PRODUCT_LOGO_NAME_22 / _WHITE
+    #                              chromium/product_logo_name_22{,_white}.png
+    #     The wordmark, drawn in the payment request dialog header - the plain
+    #     one on light backgrounds, the white one in dark mode
+    #     (payment_request_views_util.cc). These have no roundel-sized
+    #     equivalent, so they live in brand/inapp/ mirroring the Windows repo.
+    #
+    # The 300% pak has no chromium/ assets upstream at all and falls back to
+    # the 100% ones via fallback_to_low_resolution; likewise upstream ships no
+    # 2x under chromium/linux/, but we have a real 32x32 for it so there is no
+    # reason to let it upscale the 16x16.
+    scaled_images = {
+        'default_100_percent': {
+            'chromium/product_logo_32.png': 'product_logo_32.png',  # 32x32
+            'chromium/linux/product_logo_16.png': 'product_logo_16.png',  # 16x16
+            'chromium/product_logo_name_22.png':
+                'inapp/default_100_percent/product_logo_name_22.png',  # 88x22
+            'chromium/product_logo_name_22_white.png':
+                'inapp/default_100_percent/product_logo_name_22_white.png',  # 88x22
+        },
+        'default_200_percent': {
+            'chromium/product_logo_32.png': 'product_logo_64.png',  # 64x64
+            'chromium/linux/product_logo_16.png': 'product_logo_32.png',  # 32x32
+            'chromium/product_logo_name_22.png':
+                'inapp/default_200_percent/product_logo_name_22.png',  # 181x44
+            'chromium/product_logo_name_22_white.png':
+                'inapp/default_200_percent/product_logo_name_22_white.png',  # 181x44
+        },
     }
-    for scale_dir, source_name in scaled_logo_sources.items():
-        scale_dst = source_tree / 'chrome' / 'app' / 'theme' / scale_dir / 'chromium'
-        scale_dst.mkdir(parents=True, exist_ok=True)
-        (scale_dst / 'product_logo_32.png').write_bytes(
-            (brand_dir / source_name).read_bytes())
+    for scale_dir, entries in scaled_images.items():
+        scale_root = source_tree / 'chrome' / 'app' / 'theme' / scale_dir
+        for grd_rel_path, brand_rel_path in entries.items():
+            scale_dst = scale_root / grd_rel_path
+            scale_dst.parent.mkdir(parents=True, exist_ok=True)
+            scale_dst.write_bytes((brand_dir / brand_rel_path).read_bytes())
 
     webui_logo_dst = source_tree / 'ui' / 'webui' / 'resources' / 'images' / 'chrome_logo_dark.svg'
     if webui_logo_dst.parent.exists():
