@@ -5,14 +5,14 @@ runs:
   using: composite
   steps:
     - name: Download AppImage artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: aerium-*-AppImage
         path: ./release/
         merge-multiple: true
 
     - name: Download tar.xz artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         pattern: aerium-*-linux
         path: ./release/

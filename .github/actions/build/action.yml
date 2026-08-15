@@ -29,7 +29,7 @@ runs:
   steps:
     - name: Download Docker image
       if: ${{ inputs.use-existing-image == 'true' }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: docker-image-${{ env.ARCH }}
         path: /tmp
@@ -41,14 +41,14 @@ runs:
 
     - name: Download build cache
       if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id == '' }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: build-cache-${{ env.ARCH }}
         path: .github/cache/
 
     - name: Download build cache from another run (resume)
       if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id != '' }}
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: build-cache-${{ env.ARCH }}
         path: .github/cache/
@@ -74,7 +74,7 @@ runs:
       run: bash ./.github/scripts/export-cache.sh
 
     - name: Upload build cache
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: build-cache-${{ env.ARCH }}
         path: .github/cache/build-cache-${{ env.ARCH }}.tar.zst

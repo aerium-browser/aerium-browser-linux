@@ -4,10 +4,10 @@ description: Package ungoogled-chromium as AppImage and tar.xz, upload artifacts
 runs:
   using: composite
   steps:
-    - uses: docker/setup-buildx-action@v3
+    - uses: docker/setup-buildx-action@v4
 
     - name: Download build cache
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: build-cache-${{ env.ARCH }}
         path: .github/cache/
@@ -36,7 +36,7 @@ runs:
         echo "ungoogled_revision=${ungoogled_revision}" >> $GITHUB_OUTPUT
 
     - name: Upload AppImage artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}-AppImage
         path: build/release/aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}.AppImage*
@@ -44,7 +44,7 @@ runs:
         compression-level: 0
 
     - name: Upload tar.xz artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}-linux
         path: build/release/aerium-${{ steps.version.outputs.version }}-${{ env.ARCH }}_linux.tar.xz

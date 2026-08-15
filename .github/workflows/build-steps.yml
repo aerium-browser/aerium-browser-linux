@@ -28,15 +28,15 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with: { submodules: true }
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and cache Docker image
         id: build-image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./docker
           file: ./docker/build.Dockerfile
@@ -46,7 +46,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Upload Docker image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docker-image-${{ inputs.arch }}
           path: /tmp/chromium-builder.tar
@@ -64,7 +64,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -79,7 +79,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -92,7 +92,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -105,7 +105,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -118,7 +118,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -131,7 +131,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -144,7 +144,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -157,7 +157,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -170,7 +170,7 @@ jobs:
     outputs:
       status: ${{ steps.build.outputs.status }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         id: build
@@ -181,7 +181,7 @@ jobs:
     if: needs.build_part_09.outputs.status == 'running'
     needs: build_part_09
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
         with: { use-existing-image: true, final: true }
@@ -193,6 +193,6 @@ jobs:
                         needs.build_part_10.result) }}
     needs: build_part_10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/package
