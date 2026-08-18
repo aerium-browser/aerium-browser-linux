@@ -32,6 +32,7 @@ _GROUPS = [
     ('core/debian/', 'Debian'),
     ('extra/debian/', 'Debian (optional)'),
     ('ungoogled-chromium/portablelinux/', 'Portable Linux packaging'),
+    ('ungoogled-chromium/windows/', 'Windows packaging'),
 ]
 
 

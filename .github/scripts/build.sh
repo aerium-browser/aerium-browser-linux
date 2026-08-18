@@ -10,6 +10,7 @@ if [ "$_prepare_only" = true ]; then
     apply_patches
     apply_domsub
     apply_branding
+    generate_patch_manifest
     write_gn_args
     fix_tool_downloading
     provide_dawn_go

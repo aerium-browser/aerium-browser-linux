@@ -122,6 +122,21 @@ apply_branding() {
     fi
 }
 
+# Writes the data behind chrome://aerium. Runs after apply_domsub deliberately:
+# domain substitution rewrites hostnames throughout the tree, and generating
+# before it would mangle any URL appearing in a patch description into the
+# unreachable placeholder domain.
+generate_patch_manifest() {
+    if [ ! -f "${_src_dir}/.patchmanifest.stamp" ]; then
+        python3 "${_root}/scripts/generate_patch_manifest.py" \
+            --series "${_main_repo}/patches/series" "${_main_repo}/patches" \
+            --series "${_root}/patches/series" "${_root}/patches" \
+            --chromium-version "$(cat "${_main_repo}/chromium_version.txt")" \
+            -o "${_src_dir}/chrome/browser/ui/webui/aerium_patch_manifest.inc"
+        touch "${_src_dir}/.patchmanifest.stamp"
+    fi
+}
+
 write_gn_args() {
     mkdir -p "${_out_dir}"
 
