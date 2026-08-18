@@ -25,3 +25,4 @@ aerium-fatih/aerium-clear-on-exit-site-exclusions.patch
 aerium-fatih/aerium-guard-settings-section.patch
 aerium-fatih/aerium-guard-location-bar-button.patch
 aerium-fatih/aerium-remove-passwords-autofill-profile-menu.patch
+aerium-fatih/aerium-ephemeral-sites.patch
