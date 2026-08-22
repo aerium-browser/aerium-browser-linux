@@ -8,9 +8,18 @@ name: auto-resume
 #     prefix match rather than one fixed name
 #   - resume-run-id only redirects build_part_01's cache source; `prep` still
 #     re-runs, which is cheap relative to the compile
-# A run that failed WITHOUT any build cache died in prep or in the very first
-# part before exporting anything - resuming would fail identically, so it is
-# left for a human.
+# Two kinds of failure are deliberately NOT resumed, because resuming them
+# only spends the cap:
+#   - no build cache at all: the run died in prep or the first part, before
+#     exporting anything
+#   - a build-error-* marker: the build action records one whenever the build
+#     script returned non-zero, which by then can only mean a failure that
+#     reproduces (the ordinary out-of-time case becomes status=running and
+#     exit 0 first). This is the case the no-cache check cannot catch on its
+#     own, since a compile error deep in the build leaves behind the cache an
+#     earlier part uploaded.
+# Both of those, and the cap, now fail this job rather than exiting green, so
+# a stalled build is visible in the Actions list instead of only in a log.
 on:
   workflow_run:
     workflows: ['Build Linux AppImage for Aerium']
@@ -31,9 +40,42 @@ jobs:
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if ! gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" --jq '.artifacts[].name' | grep -q '^build-cache-'; then
-            echo "Run $RUN_ID exported no build cache - real error, not a transient crash. Not resuming."
-            exit 0
+          names=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
+            --jq '.artifacts[] | select(.expired == false) | .name')
+
+          # A deterministic failure must not be resumed, and unlike the
+          # no-cache case it can happen with a cache present. The cache
+          # artifact is per-run and overwritten by each part, so a run whose
+          # build_part_06 hit a compile error still carries the cache
+          # build_part_05 uploaded - the guard below would see it and resume
+          # into the identical error. The build action now marks that case at
+          # the point it happens.
+          if grep -q '^build-error-' <<<"$names"; then
+            {
+              echo "## Build needs a human, not a resume"
+              echo
+              echo "Run \`$RUN_ID\` for \`$HEAD_SHA\` failed deterministically -"
+              echo "a compile error, a patch failure, or a missing build output."
+              echo "Resuming would rebuild to the same point and fail the same way."
+              echo
+              echo "The \`build-error-*\` artifact on that run has the exit code."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Run $RUN_ID failed deterministically - not resuming."
+            exit 1
+          fi
+
+          if ! grep -q '^build-cache-' <<<"$names"; then
+            {
+              echo "## Build stalled with nothing to resume"
+              echo
+              echo "Run \`$RUN_ID\` for \`$HEAD_SHA\` exported no build cache, so"
+              echo "there is no tree to continue from - it died in prep or in the"
+              echo "first part, before exporting anything."
+              echo
+              echo "Dispatch Build manually to start it over."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "Run $RUN_ID exported no build cache - a fresh build is needed."
+            exit 1
           fi
           # Cap the auto-retry chain per commit. Dispatches made with the
           # workflow token show actor github-actions[bot], so manual resumes
@@ -41,8 +83,14 @@ jobs:
           attempts=$(gh api "repos/$REPO/actions/workflows/build.yml/runs?head_sha=$HEAD_SHA&per_page=100" \
             --jq '[.workflow_runs[] | select(.actor.login == "github-actions[bot]")] | length')
           if [ "$attempts" -ge 2 ]; then
+            {
+              echo "## Auto-resume cap reached"
+              echo
+              echo "\`$HEAD_SHA\` has been auto-resumed $attempts times without"
+              echo "finishing. Something is wrong that resuming does not fix."
+            } >> "$GITHUB_STEP_SUMMARY"
             echo "Already auto-resumed $attempts times for $HEAD_SHA - giving up, this needs a human."
-            exit 0
+            exit 1
           fi
           echo "Dispatching resume of run $RUN_ID (auto-attempt $((attempts + 1)))"
           gh api -X POST "repos/$REPO/actions/workflows/build.yml/dispatches" \

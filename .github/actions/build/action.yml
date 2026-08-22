@@ -67,7 +67,42 @@ runs:
         _prepare_only: ${{ inputs.prepare-only }}
         _use_existing_image: ${{ inputs.use-existing-image }}
         _gha_final: ${{ inputs.final }}
-      run: bash ./scripts/docker-build.sh
+      run: |
+        # The step still fails exactly as before - the exit code is captured
+        # only so a deterministic failure can be recorded on the way out, then
+        # re-raised untouched. Nothing downstream sees a different status, so
+        # "Export build cache" still does not run after a failed build.
+        #
+        # A non-zero code here can only be a failure that reproduces.
+        # .github/scripts/build.sh converts the ordinary out-of-time case
+        # (ninja killed by `timeout`, rc 124) into status=running and exit 0
+        # before this point, so by the time a non-zero code reaches here it is
+        # a compile error, a patch failure, or a missing-output check. A
+        # runner death never gets here at all, and that is the case worth
+        # resuming.
+        set +e
+        bash ./scripts/docker-build.sh
+        rc=$?
+        if [ "$rc" != 0 ]; then
+          mkdir -p .github/stage-status
+          printf 'exit_code=%s\nrun_id=%s\ncommit=%s\narch=%s\n' \
+            "$rc" "$GITHUB_RUN_ID" "$GITHUB_SHA" "${ARCH:-unknown}" \
+            > .github/stage-status/build-error.txt
+        fi
+        exit $rc
+
+    - name: Upload deterministic-failure marker
+      # hashFiles is the guard that keeps this honest: it only matches when the
+      # build step itself wrote the file, so an earlier step failing (image
+      # download, cache import - both plausibly transient) does not get
+      # mislabelled as a failure that cannot be resumed.
+      if: failure() && hashFiles('.github/stage-status/build-error.txt') != ''
+      uses: actions/upload-artifact@v7
+      with:
+        name: build-error-${{ env.ARCH }}
+        path: .github/stage-status/
+        retention-days: 10
+        overwrite: true
 
     - name: Export build cache
       shell: bash
