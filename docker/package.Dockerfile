@@ -7,10 +7,22 @@ RUN apt -y update && apt -y upgrade
 ## Install system dependencies
 RUN apt -y install binutils desktop-file-utils dpkg file imagemagick wget xz-utils pv curl jq zsync
 
-RUN curl -s https://api.github.com/repos/AppImage/appimagetool/releases/tags/1.9.0 \
-    | jq -r '.assets[].browser_download_url' \
-    | grep $(uname -m) \
-    | xargs curl -Lo /usr/bin/appimagetool-$(uname -m).AppImage
+# Downloaded from the release's own URL rather than looked up through
+# api.github.com. The old form asked the API for the asset list and piped it
+# through jq, which made the packaging image depend on an unauthenticated API
+# call from inside a Docker build - and that call is rate-limited. Run 61's
+# arm64 package job died on exactly that: the API returned a body with no
+# .assets, so jq said "Cannot iterate over null (null)" and the build stopped
+# with exit 123. `curl -s` had swallowed the real 403, so the log never showed
+# the cause, only the symptom.
+#
+# The tag was already pinned at 1.9.0, so the asset URL was fixed all along
+# and the lookup bought nothing. -f makes a failed download fail here, with a
+# status, instead of writing an error page to the target and failing later.
+# The sha256 check below is unchanged and remains the real authority on what
+# was fetched; both URLs were verified to hash to the values it already lists.
+RUN curl -fLo /usr/bin/appimagetool-$(uname -m).AppImage \
+    https://github.com/AppImage/appimagetool/releases/download/1.9.0/appimagetool-$(uname -m).AppImage
 
 RUN cat <<EOF | (cd /usr/bin; sha256sum -c --strict --ignore-missing)
     46fdd785094c7f6e545b61afcfb0f3d98d8eab243f644b4b17698c01d06083d1  appimagetool-x86_64.AppImage
