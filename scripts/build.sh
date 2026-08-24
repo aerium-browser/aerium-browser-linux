@@ -23,4 +23,5 @@ fix_tool_downloading
 provide_dawn_go
 setup_toolchain
 gn_gen
+gn_check_aerium
 maybe_build

@@ -16,6 +16,7 @@ if [ "$_prepare_only" = true ]; then
     provide_dawn_go
     setup_toolchain
     gn_gen
+    gn_check_aerium
 else
     _task_timeout=18000
     cd "$_src_dir"

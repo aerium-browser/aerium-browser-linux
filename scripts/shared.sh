@@ -225,6 +225,61 @@ gn_gen() {
     ./out/Default/gn gen out/Default --fail-on-unused-args
 }
 
+# Aerium: the GN targets this project owns, as label patterns for gn check.
+#
+# Deliberately not "everything". Chromium's .gn excludes only six v8 targets
+# from header checking, so the rest of the tree is checkable in principle - but
+# checking it would be slow and would surface upstream's problems, which are
+# not ours to fix in a build script. This lists what Aerium adds.
+_aerium_check_targets=(
+    "//chrome/browser/aerium_blocker:*"
+)
+
+# Aerium: verify that every #include in our own targets is covered by a
+# declared dependency.
+#
+# This exists because a missing dep is close to invisible until it is
+# expensive. //base does not public_dep :i18n, and //net does not include
+# net/traffic_annotation, so a target using base/i18n/time_formatting.h or
+# network_traffic_annotation.h without naming those deps builds fine right up
+# until it does not - at link, hours in, or not at all on the machine where it
+# was written. Both were real, in the content blocker, and neither was caught
+# by anything before this.
+#
+# gn check is the right tool rather than a bespoke include scanner: it uses
+# GN's own notion of what a dependency permits, including public_deps chains
+# and allow_circular_includes_from, so it cannot drift from the build the way a
+# hand-written parser would.
+#
+# Runs here, in the prepare phase, because gn gen has just finished and nothing
+# has compiled yet. A failure costs the eight minutes already spent rather than
+# the sixteen it takes to reach the first compile error, or the several hours
+# to reach a link.
+gn_check_aerium() {
+    cd "${_src_dir}"
+
+    local target rc=0
+    for target in "${_aerium_check_targets[@]}"; do
+        # A target that does not exist is not a pass. It means a patch that
+        # was supposed to add it did not, and silently checking nothing is how
+        # this kind of guard rots into decoration.
+        if ! ./out/Default/gn ls out/Default "${target}" >/dev/null 2>&1; then
+            echo "[aerium] FATAL: gn check target ${target} does not exist." >&2
+            echo "[aerium]        A patch that should have created it did not apply." >&2
+            return 1
+        fi
+        echo "[aerium] gn check ${target}"
+        ./out/Default/gn check out/Default "${target}" || rc=1
+    done
+
+    if [ "${rc}" != 0 ]; then
+        echo "[aerium] FATAL: gn check found includes with no declared dependency." >&2
+        echo "[aerium]        Add the missing dep to the target's BUILD.gn." >&2
+        return 1
+    fi
+    echo "[aerium] gn check clean"
+}
+
 maybe_build() {
     cd "${_src_dir}"
     # package.sh's file list also expects xdg-mime/xdg-settings out of
