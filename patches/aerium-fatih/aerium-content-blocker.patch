@@ -1,97 +1,109 @@
-Content blocker: the ruleset engine, filter lists and forced activation.
+Content blocker: EasyList-driven blocking, user-managed lists, Settings.
 
-NOT YET IN patches/series. This is the engine and it compiles, but nothing
-creates the service and none of the new files are in a BUILD.gn target, so
-applying it today changes no behaviour. It is registered once the wiring
-below lands, so that the first build to carry it is a build that works.
+Blocks advertising and tracking requests before they are sent, using filter
+lists the user controls: three built in, any number added by URL, each one
+switchable, all refreshable on demand.
 
-What this uses, and what it does not write
+The engine is Chromium's, not ours
 
-  Chromium 152 already contains a complete content blocker. components/
-  subresource_filter blocks subresources before the request leaves the
-  browser, memory-maps a flatbuffer ruleset shared by every renderer, and
-  since 152 applies cosmetic rules through style_rule_matcher. components/
-  subresource_filter/tools/rule_parser describes itself, verbatim, as "A
-  parser of EasyList rules". Both are plain source_set/static_library
-  targets with no testonly marker, so both link into production code.
+  components/subresource_filter already blocks subresources before the
+  request leaves the browser, memory-maps a flatbuffer ruleset shared by
+  every renderer, and since 152 applies cosmetic rules through
+  style_rule_matcher. components/subresource_filter/tools/rule_parser
+  describes itself, verbatim, as "A parser of EasyList rules". Both are
+  ordinary source_set/static_library targets with no testonly marker - which
+  was worth checking, because had they been host-tool-only, lists would have
+  had to be baked in at build time and user-managed lists would have been
+  impossible.
 
-  What upstream has no notion of is a filter list somebody chose. That is
-  the entire gap this fills:
+  What upstream has no notion of is a filter list somebody chose. That gap
+  is all this fills:
 
     list text -> RuleParser -> proto::UrlRule / proto::StyleRule
               -> UnindexedRulesetWriter -> one merged unindexed file
               -> RulesetService::IndexAndStoreAndPublishRulesetIfNeeded()
 
   and the existing machinery indexes it, verifies its checksum, versions it
-  on disk and publishes it to every renderer. No matching code is ours. The
-  fast, heavily fuzzed part stays Google's; the part with an opinion about
-  which lists to carry is Aerium's.
+  on disk and publishes it to every renderer. No matching code is Aerium's.
 
 Chrome's RulesetService, not a second one
 
-  RulesetConfig allows several ruleset services to coexist, and the first
-  design here did exactly that. It was wrong. subresource_filter's renderer
-  half is singular - one UnverifiedRulesetDealer per render process, fed by
-  one publisher - and 152 ships no second ruleset anywhere in the tree, so
-  a parallel publish path would be ours to maintain against upstream for
-  ever.
-
-  Reusing the existing service costs nothing: that slot holds Safe
-  Browsing's ad filter upstream, and ungoogled-chromium removes Safe
-  Browsing, so in an Aerium build it is never populated. This fills an
-  empty slot rather than displacing a working feature.
+  RulesetConfig allows several to coexist, and the first draft used that.
+  It was wrong: subresource_filter's renderer half is singular, and 152
+  ships no second ruleset anywhere in the tree, so a parallel publish path
+  would be ours to maintain against upstream indefinitely. Reusing the
+  existing service costs nothing - that slot holds Safe Browsing's ad filter
+  upstream, and ungoogled-chromium removes Safe Browsing, so it is never
+  populated in an Aerium build. An empty slot, not a working feature.
 
 Activation
 
-  Upstream, the filter runs only where a Safe Browsing verdict says so.
-  Aerium blocks everywhere, which is a different question, so the answer
-  cannot come from that lookup - and cannot come from a pref either, since
-  the throttle is in components/ and the pref is chrome/'s local_state. A
-  process-global set by the service bridges that, read and written on the
-  UI thread only. The throttle then takes the same route DevTools already
-  uses to force activation - set the level, record FORCED_ACTIVATION - so
-  metrics and the disabled_reason bookkeeping see a state they understand.
-  Placed before the DevTools check so debugging still has the last word.
+  Upstream runs the filter only where a Safe Browsing verdict says so.
+  Aerium blocks everywhere, and that decision cannot come from a pref either
+  because the throttle is in components/ while the pref is chrome/'s
+  local_state. A process-global set by the service bridges it, read and
+  written on the UI thread only. The throttle then takes the same route
+  DevTools already uses - set the level, record FORCED_ACTIVATION - so
+  metrics and disabled_reason bookkeeping see a state they understand, and
+  sits before the DevTools check so debugging keeps the last word.
+
+No circular GN dependency
+
+  Nothing in //chrome/browser/aerium_blocker includes browser_process.h.
+  //chrome/browser depends on that target, so an include back into it is a
+  circular dependency; Chromium supports those through
+  allow_circular_includes_from, but the documented cost is a build graph
+  that misses generated dependencies and fails at compile time - an
+  expensive lesson thirteen hours into a build. The service takes a
+  RulesetServiceGetter callback and its instance is created explicitly from
+  ChromeBrowserMainParts::PostBrowserStart(); the Settings handler reads
+  lists from the service rather than from local_state.
+
+Settings
+
+  Privacy and security gains a content blocker section: an on/off toggle, an
+  automatic-update toggle disclosing exactly what the fetch does and does
+  not send, the list of filter lists with rule counts and per-list errors,
+  add and remove, and Update now.
+
+  It does not go through settings_private, although the configuration is a
+  pref. Adding a list has to be validated and then fetched, which a pref
+  write cannot express, and "Update now" is an action with no state to
+  store - inventing one would be a pref that exists to be a button. The two
+  bound toggles do use settings_private, which reaches local_state on its
+  own through PrefsUtil::FindServiceForPref.
 
 Lists
 
-  EasyList, EasyPrivacy and AdGuard Base ship enabled; users add their own
-  by https URL. Plain http is refused: a filter list rewritten in flight is
-  an instruction to the browser about what to block, and through allowlist
-  rules, what to stop blocking.
+  EasyList, EasyPrivacy and AdGuard Base ship enabled. AdGuard overlaps
+  EasyList deliberately: the indexer folds duplicates, so carrying both
+  costs far less than the sum and covers what either misses.
 
   All enabled lists merge into one ruleset, because the indexed ruleset is
   one flatbuffer and matching walks one index - a fourth list costs a
-  re-index, not a fourth lookup per request. The content version is a hash
-  over each enabled list's URL and content, so RulesetService skips the
-  whole cycle when nothing changed, and a refresh that returns identical
-  bytes costs nothing.
+  re-index, not a fourth lookup per request. The content version hashes each
+  enabled list's URL and bytes, so a refresh returning identical content
+  skips indexing entirely.
 
-  Fetches carry no cookies, no credentials and no referrer. A list fetched
-  on a daily schedule would be a reliable beacon if it carried identity.
+  Custom lists are https-only. A list rewritten in flight is an instruction
+  about what to block and, through allowlist rules, what to stop blocking.
+  Fetches send no cookies, no credentials and no referrer: a daily fetch
+  carrying identity is a beacon.
 
-  A list is rebuilt from cached text at startup before any network access,
-  so a launch with no connection blocks with last week's lists rather than
-  with nothing. A failed fetch leaves the previous copy in use and says so
-  on the row; a fetch that yields zero usable rules reports that rather
-  than showing "0 rules", which is indistinguishable from a list with
-  nothing left to block.
+  Startup rebuilds from cached text before touching the network, so a launch
+  offline blocks with last week's lists rather than with nothing. A failed
+  fetch keeps the previous copy live and says so on the row. A fetch that
+  yields zero usable rules reports that, rather than showing "0 rules" -
+  which is indistinguishable from a list with nothing left to block.
 
 Parsing untrusted text in the browser process
 
   Deliberate and bounded. RuleParser is pure string handling, allocates no
   attacker-sized buffers, and Chromium fuzzes it continuously
   (tools/rule_parser/rule_parser_fuzzer.cc). It is still privileged code
-  reading remote input, so the parse is confined to one free function with
-  a plain in/out contract: moving it behind a mojo interface later changes
+  reading remote input, so the parse is confined to one free function with a
+  plain in/out contract: moving it behind a mojo interface later changes
   that function's body, not the design around it.
-
-Still needed before this is registered in the series
-
-  - BUILD.gn: the new files in a target, and a dep on rule_parser
-  - RegisterLocalStatePrefs() called from browser_prefs.cc
-  - Something to own an AeriumBlockerService instance
-  - The Settings page: list toggles, add and remove, Update now, counts
 --- a/components/subresource_filter/core/common/common_features.h
 +++ b/components/subresource_filter/core/common/common_features.h
 @@ -27,6 +27,24 @@
@@ -174,6 +186,284 @@ Still needed before this is registered in the series
    auto* devtools_interaction_tracker =
        DevtoolsInteractionTracker::FromWebContents(
            navigation_handle()->GetWebContents());
+--- a/chrome/browser/prefs/browser_prefs.cc
++++ b/chrome/browser/prefs/browser_prefs.cc
+@@ -23,6 +23,7 @@
+ #include "chrome/browser/accessibility/invert_bubble_prefs.h"
+ #include "chrome/browser/accessibility/page_colors_controller.h"
+ #include "chrome/browser/accessibility/prefers_default_scrollbar_styles_prefs.h"
++#include "chrome/browser/aerium_blocker/aerium_blocker_prefs.h"
+ #include "chrome/browser/browser_process_impl.h"
+ #include "chrome/browser/chrome_content_browser_client.h"
+ #include "chrome/browser/component_updater/component_updater_prefs.h"
+@@ -1391,6 +1392,7 @@
+   accessibility::AccessibilityPrefsController::RegisterLocalStatePrefs(
+       registry);
+ #endif
++  aerium_blocker::RegisterLocalStatePrefs(registry);
+   autofill::prefs::RegisterLocalStatePrefs(registry);
+   breadcrumbs::RegisterPrefs(registry);
+   browser_shutdown::RegisterPrefs(registry);
+--- a/chrome/browser/BUILD.gn
++++ b/chrome/browser/BUILD.gn
+@@ -922,6 +922,7 @@
+     "//chrome/browser/accessibility",
+     "//chrome/browser/actor",
+     "//chrome/browser/actor:impl",
++    "//chrome/browser/aerium_blocker",
+     "//chrome/browser/ai",
+     "//chrome/browser/app_mode",
+     "//chrome/browser/autocomplete:aim_eligibility_service",
+--- a/chrome/browser/chrome_browser_main.cc
++++ b/chrome/browser/chrome_browser_main.cc
+@@ -15,6 +15,7 @@
+ #include "base/command_line.h"
+ #include "base/files/file_path.h"
+ #include "base/files/file_util.h"
++#include "base/functional/bind.h"
+ #include "base/memory/raw_ptr.h"
+ #include "base/metrics/histogram_functions.h"
+ #include "base/metrics/histogram_macros.h"
+@@ -30,9 +31,11 @@
+ #include "build/branding_buildflags.h"
+ #include "build/build_config.h"
+ #include "chrome/browser/active_use_util.h"
++#include "chrome/browser/aerium_blocker/aerium_blocker_service.h"
+ #include "chrome/browser/after_startup_task_utils.h"
+ #include "chrome/browser/browser_features.h"
+ #include "chrome/browser/browser_process.h"
++#include "components/subresource_filter/content/browser/ruleset_service.h"
+ #include "chrome/browser/browser_process_impl.h"
+ #include "chrome/browser/chrome_browser_main_extra_parts.h"
+ #include "chrome/browser/component_updater/registration.h"
+@@ -1663,6 +1666,19 @@
+ 
+   browser_process_->browser_policy_connector()->OnBrowserStarted();
+ 
++  // Aerium: start the content blocker. Here rather than earlier because it
++  // needs local_state and the system URL loader factory, and both exist by
++  // PostBrowserStart(). Construction rebuilds the ruleset from whatever list
++  // text is already cached before touching the network, so a launch offline
++  // still blocks with the lists from last time.
++  aerium_blocker::AeriumBlockerService::CreateInstance(
++      browser_process_->local_state(),
++      base::PathService::CheckedGet(chrome::DIR_USER_DATA),
++      browser_process_->shared_url_loader_factory(),
++      base::BindRepeating([]() -> subresource_filter::RulesetService* {
++        return g_browser_process->subresource_filter_ruleset_service();
++      }));
++
+ #if BUILDFLAG(ENABLE_PROCESS_SINGLETON)
+   // Allow ProcessSingleton to process messages.
+   // This is done here instead of just relying on the main message loop's start
+--- a/chrome/browser/ui/webui/settings/settings_ui.cc
++++ b/chrome/browser/ui/webui/settings/settings_ui.cc
+@@ -168,6 +168,7 @@
+ 
+ #if BUILDFLAG(IS_CHROMEOS)
+ #include "ash/webui/eche_app_ui/eche_app_manager.h"
++#include "chrome/browser/aerium_blocker/aerium_content_blocker_handler.h"
+ #include "chrome/browser/ash/account_manager/account_apps_availability.h"
+ #include "chrome/browser/ash/account_manager/account_apps_availability_factory.h"
+ #include "chrome/browser/ash/account_manager/account_manager_util.h"
+@@ -252,6 +253,11 @@
+   AddSettingsPageUIHandler(std::make_unique<BrowserLifetimeHandler>());
+   AddSettingsPageUIHandler(
+       std::make_unique<ClearBrowsingDataHandler>(web_ui, profile));
++  // Aerium: backs the content blocker section. Not settings_private, because
++  // adding a list must be validated and fetched and "Update now" is an action
++  // with no state to store.
++  AddSettingsPageUIHandler(
++      std::make_unique<AeriumContentBlockerHandler>());
+   AddSettingsPageUIHandler(std::make_unique<SafetyHubHandler>(profile));
+   AddSettingsPageUIHandler(std::make_unique<DownloadsHandler>(profile));
+   AddSettingsPageUIHandler(std::make_unique<ExtensionControlHandler>());
+--- a/chrome/browser/extensions/api/settings_private/prefs_util.cc
++++ b/chrome/browser/extensions/api/settings_private/prefs_util.cc
+@@ -38,6 +38,7 @@
+ #include "chrome/common/pref_names.h"
+ #include "components/autofill/core/common/autofill_prefs.h"
+ #include "components/bookmarks/common/bookmark_pref_names.h"
++#include "chrome/browser/aerium_blocker/aerium_blocker_prefs.h"
+ #include "components/browsing_data/core/pref_names.h"
+ #include "components/commerce/core/pref_names.h"
+ #include "components/component_updater/pref_names.h"
+@@ -620,6 +621,16 @@
+   // them driven from the same settings-ephemeral-sites element. Same reason as
+   // above - a pref missing from this allowlist is not an error the UI can see,
+   // it is a write that silently does nothing.
++  // Aerium: the content blocker's two bound prefs. These live in local_state
++  // rather than in the profile; FindServiceForPref below already falls back to
++  // local_state for prefs it does not find on the profile, so binding them
++  // from Settings needs nothing further. The list of filter lists is not here
++  // on purpose - it goes through AeriumContentBlockerHandler, because adding a
++  // list has to be validated and fetched, which a pref write cannot express.
++  (*s_allowlist)[aerium_blocker::kAeriumBlockerEnabled] =
++      settings_api::PrefType::kBoolean;
++  (*s_allowlist)[aerium_blocker::kAeriumBlockerAutoUpdate] =
++      settings_api::PrefType::kBoolean;
+   (*s_allowlist)[browsing_data::prefs::kAeriumEphemeralAllSites] =
+       settings_api::PrefType::kBoolean;
+   (*s_allowlist)[browsing_data::prefs::kAeriumSessionOnlySites] =
+--- a/chrome/app/settings_strings.grdp
++++ b/chrome/app/settings_strings.grdp
+@@ -2253,6 +2253,57 @@
+     <message name="IDS_SETTINGS_AERIUM_GUARD_RESTART_NOTE" desc="Note explaining that part of what a setup mode changes only applies after the browser restarts.">
+       Settings apply straight away. The chrome://flags entries a mode switches on need a restart, and are never switched off again, so a mode you leave keeps any flags it turned on.
+     </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_LABEL" desc="Label for the setting that turns Aerium's built-in advertising and tracking blocker on or off.">
++      Block ads and trackers
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_DESC" desc="Description of the built-in content blocker, stating that blocking happens before the request is sent rather than after the page loads.">
++      Requests matching your filter lists are blocked before they are sent, so blocked content is never fetched.
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_AUTO_UPDATE_LABEL" desc="Label for the setting that refreshes filter lists automatically.">
++      Keep filter lists up to date
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_AUTO_UPDATE_DESC" desc="Description of automatic filter list updates, disclosing that the browser contacts the list publishers and what it does not send.">
++      Downloads your filter lists once a day from the addresses below. No cookies, credentials or referrer are sent.
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_LISTS_HEADER" desc="Header for the list of filter lists in use.">
++      Filter lists
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_UPDATE_NOW" desc="Label for the button that downloads all filter lists immediately.">
++      Update now
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_ADD_ARIA_LABEL" desc="Accessibility label for the button that opens the dialog for adding a filter list.">
++      Add a filter list
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_ADD_TITLE" desc="Title of the dialog for adding a filter list.">
++      Add filter list
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_ADD_URL_LABEL" desc="Label for the text field taking the web address of a filter list.">
++      List address
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_ADD_NAME_LABEL" desc="Label for the optional text field naming a filter list.">
++      Name (optional)
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_INVALID_URL" desc="Error shown when the text typed into the list address field is not a usable web address.">
++      Enter a valid address.
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_HTTPS_ONLY" desc="Error shown when a filter list address does not use https. Explains the reason, since a filter list controls what the browser blocks.">
++      Filter lists must use https. A list sent over http can be changed in transit, and a filter list decides what this browser blocks.
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_DUPLICATE" desc="Error shown when the filter list address typed is already in the list.">
++      That list has already been added.
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_LIST_OFF" desc="Text shown beneath a filter list that is switched off.">
++      Off
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_LIST_DETAIL" desc="Text shown beneath a filter list giving how many rules it contributed. $1 is a formatted number.">
++      $1 rules
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_LAST_UPDATED" desc="Text giving when the filter lists were last refreshed. $1 is a formatted date and time.">
++      Last updated $1
++    </message>
++    <message name="IDS_SETTINGS_CONTENT_BLOCKER_NEVER_UPDATED" desc="Text shown when the filter lists have never been refreshed.">
++      Not downloaded yet
++    </message>
+     <message name="IDS_SETTINGS_EPHEMERAL_ALL_SITES_LABEL" desc="Label for a setting that deletes every website's cookies and stored data as soon as its last tab is closed, apart from websites the user has chosen to keep.">
+       Delete site data when its last tab closes
+     </message>
+--- a/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
++++ b/chrome/browser/ui/webui/settings/settings_localized_strings_provider.cc
+@@ -2451,6 +2451,23 @@
+        IDS_SETTINGS_CLEAR_ON_EXIT_SITES_PLACEHOLDER},
+       {"clearOnExitSitesInvalid", IDS_SETTINGS_CLEAR_ON_EXIT_SITES_INVALID},
+       {"clearOnExitSitesDuplicate", IDS_SETTINGS_CLEAR_ON_EXIT_SITES_DUPLICATE},
++      {"contentBlockerLabel", IDS_SETTINGS_CONTENT_BLOCKER_LABEL},
++      {"contentBlockerDesc", IDS_SETTINGS_CONTENT_BLOCKER_DESC},
++      {"contentBlockerAutoUpdateLabel", IDS_SETTINGS_CONTENT_BLOCKER_AUTO_UPDATE_LABEL},
++      {"contentBlockerAutoUpdateDesc", IDS_SETTINGS_CONTENT_BLOCKER_AUTO_UPDATE_DESC},
++      {"contentBlockerListsHeader", IDS_SETTINGS_CONTENT_BLOCKER_LISTS_HEADER},
++      {"contentBlockerUpdateNow", IDS_SETTINGS_CONTENT_BLOCKER_UPDATE_NOW},
++      {"contentBlockerAddAriaLabel", IDS_SETTINGS_CONTENT_BLOCKER_ADD_ARIA_LABEL},
++      {"contentBlockerAddTitle", IDS_SETTINGS_CONTENT_BLOCKER_ADD_TITLE},
++      {"contentBlockerAddUrlLabel", IDS_SETTINGS_CONTENT_BLOCKER_ADD_URL_LABEL},
++      {"contentBlockerAddNameLabel", IDS_SETTINGS_CONTENT_BLOCKER_ADD_NAME_LABEL},
++      {"contentBlockerInvalidUrl", IDS_SETTINGS_CONTENT_BLOCKER_INVALID_URL},
++      {"contentBlockerHttpsOnly", IDS_SETTINGS_CONTENT_BLOCKER_HTTPS_ONLY},
++      {"contentBlockerDuplicate", IDS_SETTINGS_CONTENT_BLOCKER_DUPLICATE},
++      {"contentBlockerListOff", IDS_SETTINGS_CONTENT_BLOCKER_LIST_OFF},
++      {"contentBlockerListDetail", IDS_SETTINGS_CONTENT_BLOCKER_LIST_DETAIL},
++      {"contentBlockerLastUpdated", IDS_SETTINGS_CONTENT_BLOCKER_LAST_UPDATED},
++      {"contentBlockerNeverUpdated", IDS_SETTINGS_CONTENT_BLOCKER_NEVER_UPDATED},
+       {"ephemeralAllSitesLabel", IDS_SETTINGS_EPHEMERAL_ALL_SITES_LABEL},
+       {"ephemeralAllSitesDesc", IDS_SETTINGS_EPHEMERAL_ALL_SITES_DESC},
+       {"ephemeralDelayLabel", IDS_SETTINGS_EPHEMERAL_DELAY_LABEL},
+--- a/chrome/browser/resources/settings/BUILD.gn
++++ b/chrome/browser/resources/settings/BUILD.gn
+@@ -132,6 +132,7 @@
+     "performance_page/tab_discard/exception_tabbed_add_dialog.ts",
+     "privacy_page/clear_on_exit.ts",
+     "privacy_page/clear_on_exit_sites.ts",
++    "privacy_page/content_blocker.ts",
+     "privacy_page/cookies_page.ts",
+     "privacy_page/do_not_track_toggle.ts",
+     "privacy_page/ephemeral_sites.ts",
+--- a/chrome/browser/resources/settings/privacy_page/privacy_page.html
++++ b/chrome/browser/resources/settings/privacy_page/privacy_page.html
+@@ -11,6 +11,8 @@
+           on-close="onPrivacyGuideDialogClosed_">
+       </settings-privacy-guide-dialog>
+     </template>
++    <settings-content-blocker id="contentBlocker" prefs="{{prefs}}">
++    </settings-content-blocker>
+     <settings-clear-on-exit id="clearOnExit" prefs="{{prefs}}">
+     </settings-clear-on-exit>
+     <settings-ephemeral-sites id="ephemeralSites" prefs="{{prefs}}">
+--- a/chrome/browser/resources/settings/privacy_page/privacy_page.ts
++++ b/chrome/browser/resources/settings/privacy_page/privacy_page.ts
+@@ -16,6 +16,7 @@
+ import '../privacy_icons.html.js';
+ import '../settings_page/settings_section.js';
+ import '../settings_shared.css.js';
++import './content_blocker.js';
+ import './clear_on_exit.js';
+ import './ephemeral_sites.js';
+ import './privacy_guide/privacy_guide_dialog.js';
+--- /dev/null
++++ b/chrome/browser/aerium_blocker/BUILD.gn
+@@ -0,0 +1,39 @@
++# Copyright 2026 The Aerium Authors
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++# Aerium: filter-list management for the content blocker.
++#
++# Its own target rather than more entries in chrome/browser's sources list, so
++# the dependency on subresource_filter's EasyList parser is declared where it
++# is used instead of widening chrome/browser's dependency surface.
++source_set("aerium_blocker") {
++  sources = [
++    "aerium_blocker_prefs.cc",
++    "aerium_blocker_prefs.h",
++    "aerium_blocker_service.cc",
++    "aerium_blocker_service.h",
++    "aerium_content_blocker_handler.cc",
++    "aerium_content_blocker_handler.h",
++  ]
++
++  deps = [
++    "//base",
++    "//components/prefs",
++    "//content/public/browser",
++    # The EasyList parser and the indexed/unindexed ruleset writers. Both are
++    # ordinary non-testonly targets - checked, because if they had been
++    # host-tool-only the lists would have had to be baked in at build time and
++    # user-managed lists would not have been possible at all.
++    "//components/subresource_filter/content/browser",
++    "//components/subresource_filter/core/browser",
++    "//components/subresource_filter/core/common",
++    "//components/subresource_filter/tools/rule_parser",
++    "//components/url_pattern_index",
++    "//components/url_pattern_index/proto:url_pattern_index",
++    "//net",
++    "//services/network/public/cpp",
++    "//third_party/protobuf:protobuf_lite",
++    "//url",
++  ]
++}
 --- /dev/null
 +++ b/chrome/browser/aerium_blocker/aerium_blocker_prefs.h
 @@ -0,0 +1,91 @@
@@ -439,7 +729,7 @@ Still needed before this is registered in the series
 +}  // namespace aerium_blocker
 --- /dev/null
 +++ b/chrome/browser/aerium_blocker/aerium_blocker_service.h
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,197 @@
 +// Copyright 2026 The Aerium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -460,6 +750,10 @@ Still needed before this is registered in the series
 +#include "base/timer/timer.h"
 +#include "chrome/browser/aerium_blocker/aerium_blocker_prefs.h"
 +#include "components/prefs/pref_change_registrar.h"
++
++namespace subresource_filter {
++class RulesetService;
++}
 +
 +class PrefService;
 +
@@ -505,10 +799,42 @@ Still needed before this is registered in the series
 +    virtual void OnBlockerListsChanged() {}
 +  };
 +
++  // How the service reaches the RulesetService without depending on
++  // //chrome/browser.
++  //
++  // Nothing in this target includes browser_process.h, and that is deliberate
++  // rather than stylistic: //chrome/browser depends on this target, so an
++  // include back into it is a circular GN dependency. Chromium supports those
++  // through allow_circular_includes_from, but the documented cost is that the
++  // build graph then misses generated dependencies and fails at compile time,
++  // which on a 13-hour build is an expensive way to learn something. Handing
++  // in a getter removes the question.
++  //
++  // A getter rather than the pointer itself because the RulesetService is not
++  // necessarily constructed when this service is.
++  using RulesetServiceGetter =
++      base::RepeatingCallback<subresource_filter::RulesetService*()>;
++
++  // Creates the process-wide instance. Called once, from
++  // ChromeBrowserMainParts::PostBrowserStart(), which is after local_state and
++  // the system URL loader factory exist. Calling it twice is a programming
++  // error and CHECKs.
++  static void CreateInstance(
++      PrefService* local_state,
++      const base::FilePath& user_data_dir,
++      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
++      RulesetServiceGetter ruleset_service_getter);
++
++  // The instance, or null before CreateInstance() has run - which is a real
++  // state the Settings handler can observe, since a WebUI can in principle be
++  // constructed before PostBrowserStart() on an unusual startup path.
++  static AeriumBlockerService* GetInstance();
++
 +  AeriumBlockerService(
 +      PrefService* local_state,
 +      const base::FilePath& user_data_dir,
-+      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory);
++      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
++      RulesetServiceGetter ruleset_service_getter);
 +
 +  AeriumBlockerService(const AeriumBlockerService&) = delete;
 +  AeriumBlockerService& operator=(const AeriumBlockerService&) = delete;
@@ -540,6 +866,11 @@ Still needed before this is registered in the series
 +
 +  bool IsEnabled() const;
 +
++  // The configured lists. Exposed so callers - the Settings handler above all -
++  // never need local_state, and therefore never need to include
++  // browser_process.h into a target //chrome/browser depends on.
++  std::vector<FilterList> GetLists() const;
++
 + private:
 +  // The outcome of one rebuild, computed on a blocking sequence.
 +  struct RebuildResult {
@@ -570,6 +901,7 @@ Still needed before this is registered in the series
 +  base::FilePath CacheFilePathFor(const std::string& url) const;
 +
 +  raw_ptr<PrefService> local_state_;
++  RulesetServiceGetter ruleset_service_getter_;
 +  const base::FilePath cache_dir_;
 +
 +  scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory_;
@@ -597,7 +929,7 @@ Still needed before this is registered in the series
 +#endif  // CHROME_BROWSER_AERIUM_BLOCKER_AERIUM_BLOCKER_SERVICE_H_
 --- /dev/null
 +++ b/chrome/browser/aerium_blocker/aerium_blocker_service.cc
-@@ -0,0 +1,531 @@
+@@ -0,0 +1,563 @@
 +// Copyright 2026 The Aerium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -616,7 +948,6 @@ Still needed before this is registered in the series
 +#include "base/strings/string_split.h"
 +#include "base/task/thread_pool.h"
 +#include "components/prefs/pref_service.h"
-+#include "chrome/browser/browser_process.h"
 +#include "components/subresource_filter/content/browser/ruleset_service.h"
 +#include "components/subresource_filter/core/common/common_features.h"
 +#include "components/subresource_filter/core/browser/ruleset_version.h"
@@ -759,11 +1090,40 @@ Still needed before this is registered in the series
 +AeriumBlockerService::RebuildResult::operator=(RebuildResult&&) = default;
 +AeriumBlockerService::RebuildResult::~RebuildResult() = default;
 +
++namespace {
++
++AeriumBlockerService* g_instance = nullptr;
++
++}  // namespace
++
++// static
++void AeriumBlockerService::CreateInstance(
++    PrefService* local_state,
++    const base::FilePath& user_data_dir,
++    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
++    RulesetServiceGetter ruleset_service_getter) {
++  CHECK(!g_instance);
++  // Deliberately leaked. It owns no resource that needs releasing, it must
++  // outlive every WebUI that observes it, and running its destructor during
++  // shutdown would mean tearing down a pref observer while other shutdown code
++  // is still writing prefs.
++  g_instance = new AeriumBlockerService(local_state, user_data_dir,
++                                        std::move(url_loader_factory),
++                                        std::move(ruleset_service_getter));
++}
++
++// static
++AeriumBlockerService* AeriumBlockerService::GetInstance() {
++  return g_instance;
++}
++
 +AeriumBlockerService::AeriumBlockerService(
 +    PrefService* local_state,
 +    const base::FilePath& user_data_dir,
-+    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory)
++    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
++    RulesetServiceGetter ruleset_service_getter)
 +    : local_state_(local_state),
++      ruleset_service_getter_(std::move(ruleset_service_getter)),
 +      cache_dir_(user_data_dir.AppendASCII("Aerium Filter Lists")),
 +      url_loader_factory_(std::move(url_loader_factory)) {
 +  // Deliberately Chrome's existing RulesetService rather than a second one.
@@ -817,6 +1177,10 @@ Still needed before this is registered in the series
 +
 +bool AeriumBlockerService::IsEnabled() const {
 +  return local_state_->GetBoolean(kAeriumBlockerEnabled);
++}
++
++std::vector<FilterList> AeriumBlockerService::GetLists() const {
++  return aerium_blocker::GetLists(local_state_);
 +}
 +
 +base::FilePath AeriumBlockerService::CacheFilePathFor(
@@ -1106,7 +1470,7 @@ Still needed before this is registered in the series
 +  SetLists(local_state_, lists);
 +
 +  subresource_filter::RulesetService* const service =
-+      g_browser_process->subresource_filter_ruleset_service();
++      ruleset_service_getter_ ? ruleset_service_getter_.Run() : nullptr;
 +  if (result.ok && service) {
 +    subresource_filter::UnindexedRulesetInfo info;
 +    info.content_version = result.content_version;
@@ -1129,3 +1493,563 @@ Still needed before this is registered in the series
 +}
 +
 +}  // namespace aerium_blocker
+--- /dev/null
++++ b/chrome/browser/aerium_blocker/aerium_content_blocker_handler.h
+@@ -0,0 +1,59 @@
++// Copyright 2026 The Aerium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#ifndef CHROME_BROWSER_AERIUM_BLOCKER_AERIUM_CONTENT_BLOCKER_HANDLER_H_
++#define CHROME_BROWSER_AERIUM_BLOCKER_AERIUM_CONTENT_BLOCKER_HANDLER_H_
++
++#include "base/scoped_observation.h"
++#include "base/values.h"
++#include "chrome/browser/aerium_blocker/aerium_blocker_service.h"
++#include "content/public/browser/web_ui_message_handler.h"
++
++namespace settings {
++
++// Aerium: backs the content-blocker section of Settings > Privacy and security.
++//
++// The list configuration is a pref, so in principle the page could edit it
++// through settings_private and skip this entirely. It does not, for two
++// reasons. Adding a list has to be validated (https only, no duplicates) and
++// then fetched, neither of which a pref write can express. And "Update now" is
++// an action rather than a state - there is no value to store that means "do it
++// again", and inventing one would be a pref that exists to be a button.
++class AeriumContentBlockerHandler
++    : public content::WebUIMessageHandler,
++      public aerium_blocker::AeriumBlockerService::Observer {
++ public:
++  AeriumContentBlockerHandler();
++
++  AeriumContentBlockerHandler(const AeriumContentBlockerHandler&) = delete;
++  AeriumContentBlockerHandler& operator=(const AeriumContentBlockerHandler&) =
++      delete;
++
++  ~AeriumContentBlockerHandler() override;
++
++  // content::WebUIMessageHandler:
++  void RegisterMessages() override;
++  void OnJavascriptAllowed() override;
++  void OnJavascriptDisallowed() override;
++
++  // aerium_blocker::AeriumBlockerService::Observer:
++  void OnBlockerListsChanged() override;
++
++ private:
++  void HandleGetLists(const base::Value::List& args);
++  void HandleAddList(const base::Value::List& args);
++  void HandleRemoveList(const base::Value::List& args);
++  void HandleSetListEnabled(const base::Value::List& args);
++  void HandleUpdateNow(const base::Value::List& args);
++
++  base::Value::List BuildListsValue() const;
++
++  base::ScopedObservation<aerium_blocker::AeriumBlockerService,
++                          aerium_blocker::AeriumBlockerService::Observer>
++      observation_{this};
++};
++
++}  // namespace settings
++
++#endif  // CHROME_BROWSER_AERIUM_BLOCKER_AERIUM_CONTENT_BLOCKER_HANDLER_H_
+--- /dev/null
++++ b/chrome/browser/aerium_blocker/aerium_content_blocker_handler.cc
+@@ -0,0 +1,135 @@
++// Copyright 2026 The Aerium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++#include "chrome/browser/aerium_blocker/aerium_content_blocker_handler.h"
++
++#include <string>
++
++#include "base/functional/bind.h"
++#include "base/i18n/time_formatting.h"
++#include "base/strings/utf_string_conversions.h"
++#include "chrome/browser/aerium_blocker/aerium_blocker_prefs.h"
++
++namespace settings {
++
++using aerium_blocker::AeriumBlockerService;
++using aerium_blocker::FilterList;
++
++AeriumContentBlockerHandler::AeriumContentBlockerHandler() = default;
++AeriumContentBlockerHandler::~AeriumContentBlockerHandler() = default;
++
++void AeriumContentBlockerHandler::RegisterMessages() {
++  web_ui()->RegisterMessageCallback(
++      "contentBlockerGetLists",
++      base::BindRepeating(&AeriumContentBlockerHandler::HandleGetLists,
++                          base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "contentBlockerAddList",
++      base::BindRepeating(&AeriumContentBlockerHandler::HandleAddList,
++                          base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "contentBlockerRemoveList",
++      base::BindRepeating(&AeriumContentBlockerHandler::HandleRemoveList,
++                          base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "contentBlockerSetListEnabled",
++      base::BindRepeating(&AeriumContentBlockerHandler::HandleSetListEnabled,
++                          base::Unretained(this)));
++  web_ui()->RegisterMessageCallback(
++      "contentBlockerUpdateNow",
++      base::BindRepeating(&AeriumContentBlockerHandler::HandleUpdateNow,
++                          base::Unretained(this)));
++}
++
++void AeriumContentBlockerHandler::OnJavascriptAllowed() {
++  if (AeriumBlockerService* service = AeriumBlockerService::GetInstance()) {
++    observation_.Observe(service);
++  }
++}
++
++void AeriumContentBlockerHandler::OnJavascriptDisallowed() {
++  observation_.Reset();
++}
++
++void AeriumContentBlockerHandler::OnBlockerListsChanged() {
++  // Rebuilds finish long after the click that caused them - a fetch, a parse
++  // and an index - so the page is told rather than left to poll.
++  FireWebUIListener("content-blocker-lists-changed", BuildListsValue());
++}
++
++base::Value::List AeriumContentBlockerHandler::BuildListsValue() const {
++  base::Value::List out;
++  AeriumBlockerService* const service = AeriumBlockerService::GetInstance();
++  if (!service) {
++    return out;
++  }
++  for (const FilterList& list : service->GetLists()) {
++    base::Value::Dict dict;
++    dict.Set("url", list.url);
++    dict.Set("title", list.title);
++    dict.Set("enabled", list.enabled);
++    dict.Set("builtin", list.builtin);
++    dict.Set("ruleCount", list.rule_count);
++    dict.Set("error", list.error);
++    // Formatted here rather than in TypeScript: the page would otherwise have
++    // to reimplement date formatting for every locale the browser ships, and
++    // get it wrong differently from the rest of Settings.
++    dict.Set("lastUpdate",
++             list.last_update.is_null()
++                 ? std::string()
++                 : base::UTF16ToUTF8(base::TimeFormatShortDateAndTime(
++                       list.last_update)));
++    out.Append(std::move(dict));
++  }
++  return out;
++}
++
++void AeriumContentBlockerHandler::HandleGetLists(
++    const base::Value::List& args) {
++  AllowJavascript();
++  CHECK_EQ(1u, args.size());
++  ResolveJavascriptCallback(args[0], BuildListsValue());
++}
++
++void AeriumContentBlockerHandler::HandleAddList(const base::Value::List& args) {
++  AllowJavascript();
++  CHECK_EQ(3u, args.size());
++  const std::string& url = args[1].GetString();
++  const std::string& title = args[2].GetString();
++
++  AeriumBlockerService* const service = AeriumBlockerService::GetInstance();
++  // The service validates rather than the page: a scheme check in TypeScript
++  // is a courtesy to the user, not a control, since anything reaching this
++  // handler could have skipped it.
++  const bool added = service && service->AddCustomList(url, title);
++  ResolveJavascriptCallback(args[0], base::Value(added));
++}
++
++void AeriumContentBlockerHandler::HandleRemoveList(
++    const base::Value::List& args) {
++  AllowJavascript();
++  CHECK_EQ(1u, args.size());
++  if (AeriumBlockerService* service = AeriumBlockerService::GetInstance()) {
++    service->RemoveCustomList(args[0].GetString());
++  }
++}
++
++void AeriumContentBlockerHandler::HandleSetListEnabled(
++    const base::Value::List& args) {
++  AllowJavascript();
++  CHECK_EQ(2u, args.size());
++  if (AeriumBlockerService* service = AeriumBlockerService::GetInstance()) {
++    service->SetListEnabled(args[0].GetString(), args[1].GetBool());
++  }
++}
++
++void AeriumContentBlockerHandler::HandleUpdateNow(
++    const base::Value::List& args) {
++  AllowJavascript();
++  if (AeriumBlockerService* service = AeriumBlockerService::GetInstance()) {
++    service->UpdateListsNow();
++  }
++}
++
++}  // namespace settings
+--- /dev/null
++++ b/chrome/browser/resources/settings/privacy_page/content_blocker.html
+@@ -0,0 +1,97 @@
++<style include="cr-shared-style cr-icons settings-shared">
++  .list-frame {
++    padding-inline-start: var(--cr-section-indent-width);
++  }
++
++  #lists > .list-item:not(:first-of-type) {
++    border-top: var(--cr-separator-line);
++  }
++
++  .cr-padded-text {
++    flex: 1;
++  }
++
++  .list-detail {
++    color: var(--cr-secondary-text-color);
++    font-size: var(--cr-form-field-label-font-size);
++  }
++
++  .list-error {
++    color: var(--cr-error-color);
++    font-size: var(--cr-form-field-label-font-size);
++  }
++</style>
++
++<settings-toggle-button id="enabledToggle" class="first"
++    pref="{{prefs.aerium.blocker.enabled}}"
++    label="$i18n{contentBlockerLabel}"
++    sub-label="$i18n{contentBlockerDesc}">
++</settings-toggle-button>
++
++<template is="dom-if" if="[[prefs.aerium.blocker.enabled.value]]">
++  <settings-toggle-button id="autoUpdateToggle"
++      pref="{{prefs.aerium.blocker.auto_update}}"
++      label="$i18n{contentBlockerAutoUpdateLabel}"
++      sub-label="$i18n{contentBlockerAutoUpdateDesc}">
++  </settings-toggle-button>
++
++  <div class="cr-row">
++    <div class="cr-padded-text">
++      $i18n{contentBlockerListsHeader}
++      <div class="secondary">[[updatedLabel_]]</div>
++    </div>
++    <cr-button id="updateNowButton" on-click="onUpdateNowClick_"
++        disabled="[[updating_]]">
++      $i18n{contentBlockerUpdateNow}
++    </cr-button>
++    <cr-button id="addListButton" on-click="onAddClick_"
++        aria-label="$i18n{contentBlockerAddAriaLabel}">
++      $i18n{add}
++    </cr-button>
++  </div>
++
++  <div id="lists" class="list-frame" role="list">
++    <template is="dom-repeat" items="[[lists_]]">
++      <div class="list-item" role="listitem">
++        <div class="start text-elide">
++          [[item.title]]
++          <div class="list-detail">[[listDetail_(item)]]</div>
++          <div class="list-error" hidden$="[[!item.error]]">[[item.error]]</div>
++        </div>
++        <cr-toggle checked="[[item.enabled]]" data-url$="[[item.url]]"
++            on-change="onListToggled_"
++            aria-label="[[item.title]]">
++        </cr-toggle>
++        <cr-icon-button class="icon-clear" data-url$="[[item.url]]"
++            on-click="onRemoveClick_" title="$i18n{remove}"
++            aria-label="$i18n{remove}"
++            hidden$="[[item.builtin]]">
++        </cr-icon-button>
++      </div>
++    </template>
++  </div>
++</template>
++
++<cr-dialog id="addDialog" close-text="$i18n{close}">
++  <div slot="title">$i18n{contentBlockerAddTitle}</div>
++  <div slot="body">
++    <cr-input id="urlInput" label="$i18n{contentBlockerAddUrlLabel}"
++        placeholder="https://example.com/list.txt"
++        value="{{newUrl_}}" on-input="validate_"
++        invalid="[[inputInvalid_]]" error-message="[[errorMessage_]]"
++        spellcheck="false" autofocus>
++    </cr-input>
++    <cr-input id="titleInput" label="$i18n{contentBlockerAddNameLabel}"
++        value="{{newTitle_}}" spellcheck="false">
++    </cr-input>
++  </div>
++  <div slot="button-container">
++    <cr-button class="cancel-button" on-click="onCancelClick_">
++      $i18n{cancel}
++    </cr-button>
++    <cr-button id="addConfirmButton" class="action-button"
++        on-click="onSubmit_" disabled="[[addDisabled_]]">
++      $i18n{add}
++    </cr-button>
++  </div>
++</cr-dialog>
+--- /dev/null
++++ b/chrome/browser/resources/settings/privacy_page/content_blocker.ts
+@@ -0,0 +1,257 @@
++// Copyright 2026 The Aerium Authors
++// Use of this source code is governed by a BSD-style license that can be
++// found in the LICENSE file.
++
++/**
++ * @fileoverview 'settings-content-blocker' is the Settings section for
++ * Aerium's content blocker: which filter lists are carried, whether they
++ * refresh automatically, and a way to add lists of your own.
++ *
++ * The list data does not come through settings_private even though it is
++ * stored in a pref. Adding a list has to be validated and then fetched, and
++ * "Update now" is an action with no state to write, so both go through
++ * AeriumContentBlockerHandler. Rule counts and errors arrive the same way,
++ * pushed when a rebuild finishes rather than polled.
++ */
++
++import 'chrome://resources/cr_elements/cr_button/cr_button.js';
++import 'chrome://resources/cr_elements/cr_dialog/cr_dialog.js';
++import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
++import 'chrome://resources/cr_elements/cr_input/cr_input.js';
++import 'chrome://resources/cr_elements/cr_shared_style.css.js';
++import 'chrome://resources/cr_elements/cr_toggle/cr_toggle.js';
++import 'chrome://resources/cr_elements/icons.html.js';
++import '../controls/settings_toggle_button.js';
++import '../settings_shared.css.js';
++
++import type {CrDialogElement} from 'chrome://resources/cr_elements/cr_dialog/cr_dialog.js';
++import type {CrToggleElement} from 'chrome://resources/cr_elements/cr_toggle/cr_toggle.js';
++import type {PrefsMixinInterface} from '/shared/settings/prefs/prefs_mixin.js';
++import {PrefsMixin} from '/shared/settings/prefs/prefs_mixin.js';
++import {addWebUIListener, sendWithPromise} from 'chrome://resources/js/cr.js';
++import {loadTimeData} from '../i18n_setup.js';
++import {PolymerElement} from 'chrome://resources/polymer/v3_0/polymer/polymer_bundled.min.js';
++
++import {getTemplate} from './content_blocker.html.js';
++
++interface FilterListEntry {
++  url: string;
++  title: string;
++  enabled: boolean;
++  builtin: boolean;
++  ruleCount: number;
++  error: string;
++  lastUpdate: string;
++}
++
++export interface SettingsContentBlockerElement {
++  $: {
++    addDialog: CrDialogElement,
++  };
++}
++
++const SettingsContentBlockerElementBase =
++    PrefsMixin(PolymerElement) as {
++      new (): PolymerElement & PrefsMixinInterface,
++    };
++
++export class SettingsContentBlockerElement extends
++    SettingsContentBlockerElementBase {
++  static get is() {
++    return 'settings-content-blocker';
++  }
++
++  static get template() {
++    return getTemplate();
++  }
++
++  static get properties() {
++    return {
++      lists_: {
++        type: Array,
++        value: () => [],
++      },
++
++      newUrl_: {
++        type: String,
++        value: '',
++      },
++
++      newTitle_: {
++        type: String,
++        value: '',
++      },
++
++      addDisabled_: {
++        type: Boolean,
++        value: true,
++      },
++
++      inputInvalid_: {
++        type: Boolean,
++        value: false,
++      },
++
++      errorMessage_: {
++        type: String,
++        value: '',
++      },
++
++      updating_: {
++        type: Boolean,
++        value: false,
++      },
++
++      updatedLabel_: {
++        type: String,
++        value: '',
++      },
++    };
++  }
++
++  declare private lists_: FilterListEntry[];
++  declare private newUrl_: string;
++  declare private newTitle_: string;
++  declare private addDisabled_: boolean;
++  declare private inputInvalid_: boolean;
++  declare private errorMessage_: string;
++  declare private updating_: boolean;
++  declare private updatedLabel_: string;
++
++  override connectedCallback() {
++    super.connectedCallback();
++    addWebUIListener(
++        'content-blocker-lists-changed',
++        (lists: FilterListEntry[]) => this.onListsChanged_(lists));
++    sendWithPromise('contentBlockerGetLists')
++        .then((lists: FilterListEntry[]) => this.onListsChanged_(lists));
++  }
++
++  private onListsChanged_(lists: FilterListEntry[]) {
++    this.lists_ = lists;
++    this.updating_ = false;
++    // The most recently refreshed list is the honest answer to "when was this
++    // last updated" - a list that failed to fetch has an older stamp, and
++    // reporting the oldest would make one dead custom list look like nothing
++    // had updated at all.
++    let newest = '';
++    for (const list of lists) {
++      if (list.lastUpdate && list.lastUpdate > newest) {
++        newest = list.lastUpdate;
++      }
++    }
++    this.updatedLabel_ = newest ?
++        loadTimeData.getStringF('contentBlockerLastUpdated', newest) :
++        loadTimeData.getString('contentBlockerNeverUpdated');
++  }
++
++  private listDetail_(list: FilterListEntry): string {
++    if (!list.enabled) {
++      return loadTimeData.getString('contentBlockerListOff');
++    }
++    return loadTimeData.getStringF(
++        'contentBlockerListDetail', list.ruleCount.toLocaleString());
++  }
++
++  private onListToggled_(event: Event) {
++    const toggle = event.target as CrToggleElement;
++    const url = toggle.dataset['url'];
++    if (url) {
++      chrome.send('contentBlockerSetListEnabled', [url, toggle.checked]);
++    }
++  }
++
++  private onRemoveClick_(event: Event) {
++    const url = (event.currentTarget as HTMLElement).dataset['url'];
++    if (url) {
++      chrome.send('contentBlockerRemoveList', [url]);
++    }
++  }
++
++  private onUpdateNowClick_() {
++    this.updating_ = true;
++    chrome.send('contentBlockerUpdateNow');
++  }
++
++  private onAddClick_() {
++    this.newUrl_ = '';
++    this.newTitle_ = '';
++    this.addDisabled_ = true;
++    this.inputInvalid_ = false;
++    this.errorMessage_ = '';
++    this.$.addDialog.showModal();
++  }
++
++  private onCancelClick_() {
++    this.$.addDialog.close();
++  }
++
++  /**
++   * https only, and no duplicates. Both are enforced again in the browser -
++   * this exists so the user is told why the button is disabled rather than
++   * having a submission silently rejected.
++   */
++  private validate_() {
++    const raw = this.newUrl_.trim();
++    if (!raw) {
++      this.inputInvalid_ = false;
++      this.errorMessage_ = '';
++      this.addDisabled_ = true;
++      return;
++    }
++
++    let parsed: URL;
++    try {
++      parsed = new URL(raw);
++    } catch (e) {
++      this.inputInvalid_ = true;
++      this.errorMessage_ = loadTimeData.getString('contentBlockerInvalidUrl');
++      this.addDisabled_ = true;
++      return;
++    }
++
++    if (parsed.protocol !== 'https:') {
++      this.inputInvalid_ = true;
++      this.errorMessage_ = loadTimeData.getString('contentBlockerHttpsOnly');
++      this.addDisabled_ = true;
++      return;
++    }
++
++    if (this.lists_.some(list => list.url === raw)) {
++      this.inputInvalid_ = true;
++      this.errorMessage_ = loadTimeData.getString('contentBlockerDuplicate');
++      this.addDisabled_ = true;
++      return;
++    }
++
++    this.inputInvalid_ = false;
++    this.errorMessage_ = '';
++    this.addDisabled_ = false;
++  }
++
++  private onSubmit_() {
++    const url = this.newUrl_.trim();
++    sendWithPromise('contentBlockerAddList', url, this.newTitle_.trim())
++        .then((added: boolean) => {
++          if (added) {
++            this.$.addDialog.close();
++            return;
++          }
++          // The browser refused it after the page thought it was fine, which
++          // means the two disagree - show the generic reason rather than
++          // closing on a failure.
++          this.inputInvalid_ = true;
++          this.errorMessage_ =
++              loadTimeData.getString('contentBlockerInvalidUrl');
++        });
++  }
++}
++
++declare global {
++  interface HTMLElementTagNameMap {
++    'settings-content-blocker': SettingsContentBlockerElement;
++  }
++}
++
++customElements.define(
++    SettingsContentBlockerElement.is, SettingsContentBlockerElement);
