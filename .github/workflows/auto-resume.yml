@@ -30,7 +30,10 @@ permissions:
 
 jobs:
   resume:
-    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_branch == 'master'
+    if: >-
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'cancelled') &&
+      github.event.workflow_run.head_branch == 'master'
     runs-on: ubuntu-latest
     steps:
       - name: Resume from the failed run's build cache
@@ -39,7 +42,39 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
+          # Cancelled counts as stopped, not just failed - the Windows repo
+          # lost nine hours of finished work to a cancellation nobody made,
+          # because a cancelled run reports conclusion 'cancelled' and this
+          # job only matched 'failure', so its checkpoint went unread.
+          #
+          # But two kinds of cancellation are routine and must NOT be resumed:
+          # superseding an in-flight build by pushing a newer commit, and
+          # killing a duplicate run on the same commit. Resuming either would
+          # fight the rule that only the newest commit builds. Telling them
+          # apart needs no guessing - a superseded run is one whose commit is
+          # no longer the branch head, and a duplicate is one that still has a
+          # sibling running. Anything else was interrupted.
+          #
+          # These exit 0, not 1: declining to resume a build someone cancelled
+          # on purpose is this job working, and marking it red would put a
+          # failure in the Actions list every time a superseded run is killed.
+          if [ "$CONCLUSION" = cancelled ]; then
+            head_sha=$(gh api "repos/$REPO/commits/master" --jq '.sha')
+            if [ "$head_sha" != "$HEAD_SHA" ]; then
+              echo "master is now $head_sha - run $RUN_ID was superseded, not interrupted."
+              exit 0
+            fi
+            live=$(gh api "repos/$REPO/actions/workflows/build.yml/runs?head_sha=$HEAD_SHA&per_page=100" \
+              --jq '[.workflow_runs[] | select(.status != "completed")] | length')
+            if [ "$live" -gt 0 ]; then
+              echo "$live run(s) for $HEAD_SHA still active - run $RUN_ID was a duplicate, not an interruption."
+              exit 0
+            fi
+            echo "Run $RUN_ID was cancelled with nothing replacing it - treating as an interruption."
+          fi
+
           names=$(gh api "repos/$REPO/actions/runs/$RUN_ID/artifacts" \
             --jq '.artifacts[] | select(.expired == false) | .name')
 
