@@ -30,11 +30,39 @@ runs:
         echo "version=${version}" >> "$GITHUB_OUTPUT"
         echo "tag=v${version}-b${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
+    - name: Compose release notes
+      shell: bash
+      run: |
+        set -euo pipefail
+        V="${{ steps.meta.outputs.version }}"
+        # Print the body of the CHANGELOG.md section for this version, stopping
+        # at the next heading. Matching the heading's version field rather
+        # than the whole line, so "## 151.0.7922.173-1 (next release)" still
+        # matches; the prefix arm covers a heading that carries a packaging
+        # revision the resolved version does not. No section is not an error -
+        # the release then carries GitHub's generated commit list alone, as it
+        # always has.
+        awk -v v="$V" '
+          BEGIN { f = 0 }
+          /^## / {
+            if (f) exit
+            if ($2 == v || index($2, v "-") == 1) { f = 1; next }
+          }
+          f' CHANGELOG.md > /tmp/notes.md || true
+        if [ -s /tmp/notes.md ]; then
+          echo "Using the CHANGELOG.md section for $V:"
+          cat /tmp/notes.md
+        else
+          echo "No CHANGELOG.md section for $V - publishing with generated notes only."
+        fi
+
     - name: Create Release
       uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1, pinned commit hash
       with:
         tag_name: ${{ steps.meta.outputs.tag }}
         name: Aerium ${{ steps.meta.outputs.version }}
+        body_path: /tmp/notes.md
+        generate_release_notes: true
         fail_on_unmatched_files: true
         files: |
           release/aerium-*.AppImage
