@@ -6,8 +6,9 @@
 
 <p align="center"><i>by Dioide</i></p>
 
-[![build](https://img.shields.io/github/actions/workflow/status/aerium-browser/aerium-browser-linux/build.yml?label=build)](https://github.com/aerium-browser/aerium-browser-linux/actions/workflows/build.yml)
 [![release](https://img.shields.io/github/v/release/aerium-browser/aerium-browser-linux)](https://github.com/aerium-browser/aerium-browser-linux/releases/latest)
+[![released](https://img.shields.io/github/release-date/aerium-browser/aerium-browser-linux?label=released)](https://github.com/aerium-browser/aerium-browser-linux/releases/latest)
+[![downloads](https://img.shields.io/github/downloads/aerium-browser/aerium-browser-linux/total?label=downloads)](https://github.com/aerium-browser/aerium-browser-linux/releases)
 
 Aerium is a browser for people who'd rather their browser stayed out of the way. No telemetry calling home, no bundled Google services, no ad platform baked into the settings page.
 
