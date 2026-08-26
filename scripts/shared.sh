@@ -231,9 +231,13 @@ gn_gen() {
 # from header checking, so the rest of the tree is checkable in principle - but
 # checking it would be slow and would surface upstream's problems, which are
 # not ours to fix in a build script. This lists what Aerium adds.
-_aerium_check_targets=(
-    "//chrome/browser/aerium_blocker:*"
-)
+#
+# Empty since the content blocker was dropped: every remaining Aerium change
+# lands inside a target Chromium already owns, and there is no standalone
+# source_set of ours left to check. Kept, with the check below, so the next
+# target Aerium adds is one line away from being covered rather than a guard
+# somebody has to remember to rebuild.
+_aerium_check_targets=()
 
 # Aerium: verify that every #include in our own targets is covered by a
 # declared dependency.
@@ -257,6 +261,11 @@ _aerium_check_targets=(
 # to reach a link.
 gn_check_aerium() {
     cd "${_src_dir}"
+
+    if [ "${#_aerium_check_targets[@]}" -eq 0 ]; then
+        echo "[aerium] gn check: no Aerium-owned targets to check"
+        return 0
+    fi
 
     local target rc=0
     for target in "${_aerium_check_targets[@]}"; do
