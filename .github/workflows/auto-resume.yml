@@ -8,18 +8,22 @@ name: auto-resume
 #     prefix match rather than one fixed name
 #   - resume-run-id only redirects build_part_01's cache source; `prep` still
 #     re-runs, which is cheap relative to the compile
-# Two kinds of failure are deliberately NOT resumed, because resuming them
+# Three kinds of failure are deliberately NOT resumed, because resuming them
 # only spends the cap:
-#   - no build cache at all: the run died in prep or the first part, before
-#     exporting anything
+#   - no build cache at all: the run died in prep, before exporting anything
+#   - a cache but no completed build part: prep exports build-cache-<arch> too,
+#     so a run stopped during build_part_01 leaves one holding a source tree
+#     with nothing compiled in it. Resuming that recompiles from zero
 #   - a build-error-* marker: the build action records one whenever the build
 #     script returned non-zero, which by then can only mean a failure that
 #     reproduces (the ordinary out-of-time case becomes status=running and
 #     exit 0 first). This is the case the no-cache check cannot catch on its
 #     own, since a compile error deep in the build leaves behind the cache an
 #     earlier part uploaded.
-# Both of those, and the cap, now fail this job rather than exiting green, so
-# a stalled build is visible in the Actions list instead of only in a log.
+# Those three, and the cap, fail this job rather than exiting green, so a
+# stalled build is visible in the Actions list instead of only in a log. The
+# one exception is a run someone stopped by hand before any part finished:
+# superseding a run that way is deliberate and routine, so it exits green.
 on:
   workflow_run:
     workflows: ['Build Linux AppImage for Aerium']
@@ -110,6 +114,51 @@ jobs:
               echo "Dispatch Build manually to start it over."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "Run $RUN_ID exported no build cache - a fresh build is needed."
+            exit 1
+          fi
+
+          # A cache is not the same thing as compile progress, and on this
+          # pipeline the two are easy to confuse: `prep` exports
+          # build-cache-<arch> as well, holding the prepared source tree before
+          # a single object file exists, under the same name the build parts
+          # later overwrite. So a run stopped during build_part_01 leaves an
+          # artifact the check above happily accepts.
+          #
+          # Resuming that is not a resume. resume-run-id only redirects
+          # build_part_01's cache source and prep re-runs either way, so
+          # importing a prep-only tree compiles everything from zero - a fresh
+          # build that has also spent one of the two auto-resume attempts.
+          #
+          # Run 32935653134 is the case this was written for. It was stopped 21
+          # minutes in with only prep finished, and this job dispatched a resume
+          # of it that would have recompiled the whole tree.
+          #
+          # Whether any part actually finished is not a question the artifact
+          # list can answer, so ask the jobs.
+          parts=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '[.jobs[] | select(.conclusion == "success")
+                           | select(.name | contains("build_part_"))] | length')
+          if [ "$parts" -eq 0 ]; then
+            {
+              echo "## Nothing compiled yet - a resume would be a fresh build"
+              echo
+              echo "Run \`$RUN_ID\` for \`$HEAD_SHA\` exported a build cache, but no"
+              echo "\`build_part_\` job completed, so that cache is \`prep\`'s source"
+              echo "tree with nothing built in it. Resuming would compile from zero"
+              echo "and spend an auto-resume attempt doing it."
+              echo
+              echo "Dispatch Build without \`resume_run_id\` to start it over."
+            } >> "$GITHUB_STEP_SUMMARY"
+            # Red only when nobody asked for this. Stopping a run early to
+            # replace it is the ordinary way to supersede one, and the
+            # cancellation guards above already exit 0 rather than put a
+            # failure in the Actions list for a deliberate act; a build that
+            # died on its own in the first part is the case worth flagging.
+            if [ "$CONCLUSION" = cancelled ]; then
+              echo "Run $RUN_ID was stopped before any build part finished - nothing to resume."
+              exit 0
+            fi
+            echo "Run $RUN_ID completed no build part - resuming it would compile from zero."
             exit 1
           fi
           # Cap the auto-retry chain per commit. Dispatches made with the
