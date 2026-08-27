@@ -267,11 +267,11 @@ _aerium_check_targets=()
 # same compiler over the same generated headers in a fraction of it.
 #
 # Object files rather than gn labels for the C++, because a source_set has no
-# single ninja output to ask for - the objects are the artifact. The paths
-# follow gn's own convention, obj/<dir>/<target_name>/<file>.o, which is what
-# out/Default's build.ninja spells for //chrome/browser/browsing_data. If a
-# path ever stops being a real target the guard below says so by name rather
-# than letting ninja fail with "unknown target" halfway down a list.
+# single ninja output to ask for - the objects are the artifact. The path is
+# obj/<dir>/<target_name>/<file>.o, and the target name is the trap:
+# chrome/browser/browsing_data/BUILD.gn declares TWO source_sets, and the .cc
+# files live in "impl" while only the headers are in "browsing_data". Guessing
+# the directory name is how run 3 of the pre-flight failed.
 #
 # build_ts is the TypeScript half and is worth more than it looks: it is the
 # only place tsc sees settings/*.ts with Chromium's own config, so a WebUI
@@ -283,8 +283,8 @@ _aerium_check_targets=()
 # tools/typescript/ts_library.gni rather than assumed, since the obvious guess
 # is wrong and would have failed the first run with a puzzling message.
 _aerium_preflight_targets=(
-    "obj/chrome/browser/browsing_data/browsing_data/aerium_site_rules.o"
-    "obj/chrome/browser/browsing_data/browsing_data/chrome_browsing_data_lifetime_manager.o"
+    "obj/chrome/browser/browsing_data/impl/aerium_site_rules.o"
+    "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
 )
 
@@ -304,8 +304,20 @@ aerium_preflight() {
     done
     if [ "${#missing[@]}" -ne 0 ]; then
         echo "[aerium] FATAL: pre-flight targets are not in the build graph:" >&2
-        printf '[aerium]        %s\n' "${missing[@]}" >&2
-        echo "[aerium]        Either the file moved or the gn target was renamed." >&2
+        local suggestion
+        for target in "${missing[@]}"; do
+            echo "[aerium]        ${target}" >&2
+            # Almost always the gn target name in the path is wrong rather
+            # than the file, so show what ninja does know by that basename.
+            # Run 3 failed for exactly that and had to be diagnosed by reading
+            # BUILD.gn by hand; this prints the answer instead.
+            while read -r suggestion; do
+                echo "[aerium]          did you mean: ${suggestion}" >&2
+            done < <(ninja -C out/Default -t targets all 2>/dev/null \
+                     | cut -d: -f1 \
+                     | grep -F -- "$(basename "${target}")" \
+                     | head -5)
+        done
         echo "[aerium]        Fix _aerium_preflight_targets in scripts/shared.sh." >&2
         return 1
     fi
