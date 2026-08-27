@@ -74,9 +74,9 @@ reach it), and none of the three earlier patches or this one exists on
 Android.
 --- a/components/browsing_data/core/pref_names.h
 +++ b/components/browsing_data/core/pref_names.h
-@@ -78,6 +78,45 @@
- inline constexpr char kAeriumEphemeralSites[] =
-     "browser.clear_data.aerium_ephemeral_sites";
+@@ -88,6 +88,45 @@
+ inline constexpr char kAeriumEphemeralClearCache[] =
+     "browser.clear_data.aerium_ephemeral_clear_cache";
  
 +// Aerium: turns the list above inside out. With this on, every site is treated
 +// as ephemeral and kAeriumClearOnExitExcludedSites becomes the keep list -
@@ -359,9 +359,9 @@ Android.
 --- a/chrome/browser/extensions/api/settings_private/prefs_util.cc
 +++ b/chrome/browser/extensions/api/settings_private/prefs_util.cc
 @@ -616,6 +616,23 @@
-   // write silently and the list looks like it saves but never does.
-   (*s_allowlist)[browsing_data::prefs::kAeriumEphemeralSites] =
        settings_api::PrefType::kList;
+   (*s_allowlist)[browsing_data::prefs::kAeriumEphemeralClearCache] =
+       settings_api::PrefType::kBoolean;
 +  // Aerium: the all-sites mode, the greylist and the clearing delay, all of
 +  // them driven from the same settings-ephemeral-sites element. Same reason as
 +  // above - a pref missing from this allowlist is not an error the UI can see,
