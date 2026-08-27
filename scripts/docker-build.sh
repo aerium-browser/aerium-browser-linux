@@ -20,6 +20,7 @@ fi
 # forward relevant envs when set
 _extra_env=()
 [ -n "${_prepare_only:-}" ] && _extra_env+=(-e "_prepare_only")
+[ -n "${_preflight:-}" ] && _extra_env+=(-e "_preflight")
 [ -n "${_gha_final:-}" ] && _extra_env+=(-e _gha_final)
 [ -n "${GITHUB_OUTPUT:-}" ] && _extra_env+=(-e GITHUB_OUTPUT)
 [ -n "${ARCH:-}" ] && _extra_env+=(-e ARCH)

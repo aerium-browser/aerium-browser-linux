@@ -5,7 +5,13 @@ set -euxo pipefail
 
 setup_paths
 
-if [ "$_prepare_only" = true ]; then
+# The pre-flight does everything preparation does and then compiles only the
+# sources Aerium owns - see _aerium_preflight_targets in scripts/shared.sh.
+# Separate from _prepare_only rather than folded into it because prepare's
+# output is the build cache the real build resumes from, and this must not
+# produce one: half a compile in the cache would be restored by build_part_01
+# as if it were a clean tree.
+if [ "${_preflight:-false}" = true ] || [ "${_prepare_only:-false}" = true ]; then
     fetch_sources false
     apply_patches
     apply_domsub
@@ -17,6 +23,9 @@ if [ "$_prepare_only" = true ]; then
     setup_toolchain
     gn_gen
     gn_check_aerium
+    if [ "${_preflight:-false}" = true ]; then
+        aerium_preflight
+    fi
 else
     _task_timeout=18000
     cd "$_src_dir"

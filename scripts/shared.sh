@@ -259,6 +259,65 @@ _aerium_check_targets=()
 # has compiled yet. A failure costs the eight minutes already spent rather than
 # the sixteen it takes to reach the first compile error, or the several hours
 # to reach a link.
+# Aerium: the ninja targets the pre-flight compiles.
+#
+# The point is a fast answer to "does the C++ we wrote actually compile", not a
+# browser. A full build is 10+ hours and reports a syntax error in
+# chrome/browser/browsing_data somewhere in hour six; these targets reach the
+# same compiler over the same generated headers in a fraction of it.
+#
+# Object files rather than gn labels for the C++, because a source_set has no
+# single ninja output to ask for - the objects are the artifact. The paths
+# follow gn's own convention, obj/<dir>/<target_name>/<file>.o, which is what
+# out/Default's build.ninja spells for //chrome/browser/browsing_data. If a
+# path ever stops being a real target the guard below says so by name rather
+# than letting ninja fail with "unknown target" halfway down a list.
+#
+# build_ts is the TypeScript half and is worth more than it looks: it is the
+# only place tsc sees settings/*.ts with Chromium's own config, so a WebUI
+# element that type-checks locally against stubs still has to survive here.
+# ESLint is a presubmit rather than a build step, so it is NOT covered.
+#
+# It is named by its manifest and not by a stamp because ts_library() is an
+# action() with explicit outputs and produces no stamp - checked in
+# tools/typescript/ts_library.gni rather than assumed, since the obvious guess
+# is wrong and would have failed the first run with a puzzling message.
+_aerium_preflight_targets=(
+    "obj/chrome/browser/browsing_data/browsing_data/aerium_site_rules.o"
+    "obj/chrome/browser/browsing_data/browsing_data/chrome_browsing_data_lifetime_manager.o"
+    "gen/chrome/browser/resources/settings/build_ts_manifest.json"
+)
+
+# Aerium: compile just the Aerium-owned sources, and nothing else.
+aerium_preflight() {
+    cd "${_src_dir}"
+
+    local target
+    local -a missing=()
+    for target in "${_aerium_preflight_targets[@]}"; do
+        # A target that does not exist is not a pass - same reasoning as
+        # gn_check_aerium above. Silently compiling nothing is how this rots
+        # into a green tick that means nothing.
+        if ! ninja -C out/Default -t query "${target}" >/dev/null 2>&1; then
+            missing+=("${target}")
+        fi
+    done
+    if [ "${#missing[@]}" -ne 0 ]; then
+        echo "[aerium] FATAL: pre-flight targets are not in the build graph:" >&2
+        printf '[aerium]        %s\n' "${missing[@]}" >&2
+        echo "[aerium]        Either the file moved or the gn target was renamed." >&2
+        echo "[aerium]        Fix _aerium_preflight_targets in scripts/shared.sh." >&2
+        return 1
+    fi
+
+    local start elapsed
+    start=$(date +%s)
+    echo "[aerium] pre-flight: compiling ${#_aerium_preflight_targets[@]} targets"
+    ninja -C out/Default "${_aerium_preflight_targets[@]}"
+    elapsed=$(( $(date +%s) - start ))
+    echo "[aerium] pre-flight compile finished in ${elapsed}s"
+}
+
 gn_check_aerium() {
     cd "${_src_dir}"
 
