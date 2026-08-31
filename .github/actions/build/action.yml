@@ -39,18 +39,35 @@ runs:
       shell: bash
       run: docker load -i /tmp/chromium-builder.tar
 
+    # The checkpoint alternates between two slots - see "Pick a checkpoint
+    # slot" below for why - so which name holds the current one depends on how
+    # many stages have run. Artifact ids increase monotonically, so the largest
+    # id is the most recent upload; a run written before the two-slot scheme
+    # has only the base name and resolves to it unchanged.
+    - name: Resolve the checkpoint slot to restore
+      id: restore-slot
+      if: ${{ inputs.prepare-only != 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: build-cache-${{ env.ARCH }}
+        RESTORE_RUN_ID: ${{ inputs.restore-run-id }}
+      run: bash ./.github/scripts/checkpoint-slot.sh restore
+
     - name: Download build cache
-      if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id == '' }}
+      if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id == ''
+              && steps.restore-slot.outputs.name != '' }}
       uses: actions/download-artifact@v8
       with:
-        name: build-cache-${{ env.ARCH }}
+        name: ${{ steps.restore-slot.outputs.name }}
         path: .github/cache/
 
     - name: Download build cache from another run (resume)
-      if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id != '' }}
+      if: ${{ inputs.prepare-only != 'true' && inputs.restore-run-id != ''
+              && steps.restore-slot.outputs.name != '' }}
       uses: actions/download-artifact@v8
       with:
-        name: build-cache-${{ env.ARCH }}
+        name: ${{ steps.restore-slot.outputs.name }}
         path: .github/cache/
         run-id: ${{ inputs.restore-run-id }}
         github-token: ${{ github.token }}
@@ -108,10 +125,41 @@ runs:
       shell: bash
       run: bash ./.github/scripts/export-cache.sh
 
+    # overwrite: true deletes the existing artifact and then uploads the new
+    # one, so anything that interrupts the job in between leaves the run with
+    # no checkpoint at all. That is what killed the Windows repo's run
+    # 33089940410: it was cancelled eight seconds into the upload, moments
+    # after the delete, and five stages of compiling were unrecoverable.
+    #
+    # So the checkpoint alternates between build-cache-<arch> and
+    # build-cache-<arch>-b. Each stage writes to whichever slot is not current
+    # and retires the other only once the upload has actually succeeded, so
+    # there is always one complete checkpoint on the run.
+    - name: Pick a checkpoint slot
+      id: save-slot
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: build-cache-${{ env.ARCH }}
+      run: bash ./.github/scripts/checkpoint-slot.sh save
+
     - name: Upload build cache
       uses: actions/upload-artifact@v7
       with:
-        name: build-cache-${{ env.ARCH }}
+        name: ${{ steps.save-slot.outputs.target }}
         path: .github/cache/build-cache-${{ env.ARCH }}.tar.zst
         if-no-files-found: error
-        overwrite: true
+
+    # Only now, with the replacement stored. A failure here costs one
+    # checkpoint of storage for its retention period and nothing else - the
+    # next restore picks the newer of the two by id either way.
+    - name: Retire the previous checkpoint
+      if: ${{ steps.save-slot.outputs.previous_id != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PREVIOUS_ID: ${{ steps.save-slot.outputs.previous_id }}
+      run: |
+        gh api -X DELETE \
+          "repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS_ID" \
+          || echo "could not retire artifact $PREVIOUS_ID (non-fatal)"
