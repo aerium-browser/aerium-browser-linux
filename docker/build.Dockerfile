@@ -20,13 +20,16 @@ RUN apt-get -y update && apt-get -y install nodejs && npm update -g npm
 # would supply that toolchain as a cipd dep of dawn's own DEPS, which a source
 # tarball doesn't carry - see provide_dawn_go() in scripts/shared.sh.
 # xdg-utils: xdg-mime/xdg-settings are vendored into out/Default at package time.
+# clang-format: symlinked into buildtools/linux64-format, which src/DEPS would
+# have pulled from GCS. Chromium 152 generates crubit's support headers through
+# it, so without it ninja rejects the graph before compiling anything.
 # clang/cmake/lld: only a non-x86_64 *host* compiles LLVM itself (there is no
 # prebuilt non-x86 clang/rust for Linux - see setup_toolchain() in
 # scripts/shared.sh). tools/clang/scripts/build.py always configures with
 # -DLLVM_ENABLE_LLD=ON, which makes LLVM's cmake feed -fuse-ld=lld to the host
 # compiler we pass as --host-cc/--host-cxx and hard-fail configure when it does
 # not work; Debian's clang package does not pull lld in on its own.
-RUN apt-get -y install bison clang cmake debhelper desktop-file-utils flex git golang gperf gsettings-desktop-schemas-dev\
+RUN apt-get -y install bison clang clang-format cmake debhelper desktop-file-utils flex git golang gperf gsettings-desktop-schemas-dev\
   imagemagick libasound2-dev libavcodec-dev libavformat-dev libavutil-dev libcap-dev libcups2-dev libcurl4-openssl-dev\ 
   libdrm-dev libegl1-mesa-dev libelf-dev libevent-dev libexif-dev libflac-dev libgbm-dev libgcrypt20-dev libgl1-mesa-dev\
   libgles2-mesa-dev libglew-dev libglib2.0-dev libglu1-mesa-dev libgtk-3-dev libhunspell-dev libjpeg-dev libjs-jquery-flot\
