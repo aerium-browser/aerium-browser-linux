@@ -1,0 +1,81 @@
+name: Build Linux AppImage for Aerium
+
+# Aerium diverges from upstream here: upstream only builds on a version-tag
+# push (tags: '[0-9]+.[0-9]+.[0-9]+.[0-9]+-[0-9]+'). We match Windows/Android's
+# own convention instead - push-triggered + workflow_dispatch - so all three
+# platform repos behave the same way. Every run is inherently a fresh source
+# checkout at the `prep` stage (that's upstream's own design, not something we
+# changed - see build-steps.yml), so there's no separate "fresh" input the way
+# Windows/Android have one; the one thing worth resuming across runs is the
+# multi-hour compile itself if a run gets killed (e.g. an accidental
+# concurrency cancellation) - see `resume_run_id` below.
+on:
+  workflow_dispatch:
+    inputs:
+      resume_run_id:
+        description: 'Resume compiling from this earlier run''s last completed build-cache checkpoint instead of starting build_part_01 from a fresh prep. Does not skip `prep` itself (cheap relative to the compile) - only build_part_01''s cache source.'
+        type: string
+        required: false
+        default: ''
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/**'
+      - 'docker/**'
+      - 'patches/**'
+      - 'package/**'
+      - 'devutils/**'
+      - 'flags.linux.gn'
+      - 'ungoogled-chromium'
+      - '.github/workflows/**'
+      - '.github/actions/**'
+      - '.github/scripts/**'
+
+# cancel-in-progress deliberately false, matching the Windows and Android
+# repos: a routine push must QUEUE behind a multi-hour build, not kill it.
+# To supersede a doomed run, cancel it manually first.
+concurrency:
+  group: build-linux-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  # The build action retires the previous checkpoint artifact once the
+  # replacement is stored - see .github/scripts/checkpoint-slot.sh - and both
+  # listing and deleting artifacts need this. Without it the delete fails
+  # harmlessly and the run simply keeps two checkpoints until they expire.
+  actions: write
+
+jobs:
+  build:
+    name: Build ungoogled-chromium binaries and AppImage
+    strategy:
+      matrix:
+        arch: [arm64, x86_64]
+      max-parallel: 2
+      fail-fast: true
+    uses: ./.github/workflows/build-steps.yml
+    with:
+      arch: ${{ matrix.arch }}
+      runs-on: ubuntu-latest
+      resume-run-id: ${{ inputs.resume_run_id || '' }}
+
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: ./.github/actions/release
+        env:
+          # Prefer a PAT when one is configured: GITHUB_TOKEN's permissions
+          # are capped by the enterprise/org/repo default and the workflow's
+          # own `permissions: contents: write` cannot raise them past it,
+          # which is currently blocking release creation in the Windows repo
+          # with a 403. Composite actions can't read `secrets` themselves, so
+          # the choice has to happen here and reach the action as an env var.
+          # Empty secret falls through to GITHUB_TOKEN, so this stays inert
+          # until RELEASE_TOKEN exists.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}

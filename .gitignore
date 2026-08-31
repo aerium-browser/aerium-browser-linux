@@ -1,0 +1,8 @@
+/build/
+/.config/
+/.gcs_entries
+*.tar
+*.tar.xz
+*.AppImage
+*.AppImage.zsync
+*.log
