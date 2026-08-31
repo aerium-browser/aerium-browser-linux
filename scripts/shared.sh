@@ -232,12 +232,15 @@ gn_gen() {
 # checking it would be slow and would surface upstream's problems, which are
 # not ours to fix in a build script. This lists what Aerium adds.
 #
-# Empty since the content blocker was dropped: every remaining Aerium change
-# lands inside a target Chromium already owns, and there is no standalone
-# source_set of ours left to check. Kept, with the check below, so the next
-# target Aerium adds is one line away from being covered rather than a guard
-# somebody has to remember to rebuild.
-_aerium_check_targets=()
+# Not a standalone source_set of ours - there is none left since the content
+# blocker was dropped - but the one upstream target Aerium adds includes to.
+# chrome_browser_main_extra_parts_profiles.cc now includes
+# chrome/browser/aerium/aerium_update_checker.h, which pulls in the network
+# service, the JSON decoder and net/traffic_annotation, and the update patch
+# declares those deps. This is what checks that it declared all of them.
+_aerium_check_targets=(
+    "//chrome/browser/profiles:profiles_extra_parts_impl"
+)
 
 # Aerium: verify that every #include in our own targets is covered by a
 # declared dependency.
@@ -285,6 +288,7 @@ _aerium_check_targets=()
 _aerium_preflight_targets=(
     "obj/chrome/browser/browsing_data/impl/aerium_site_rules.o"
     "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
+    "obj/chrome/browser/profiles/profiles_extra_parts_impl/chrome_browser_main_extra_parts_profiles.o"
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
 )
 
