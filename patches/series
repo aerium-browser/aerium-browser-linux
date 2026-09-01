@@ -1,7 +1,6 @@
 ungoogled-chromium/portablelinux/drop-nodejs-version-check.patch
 ungoogled-chromium/portablelinux/use-oauth2-client-switches-as-default.patch
 ungoogled-chromium/portablelinux/fix-compiling-on-arm64.patch
-ungoogled-chromium/portablelinux/fix-nongit-dep-on-histogram-xml.patch
 aerium-fatih/aerium-first-run-page.patch
 aerium-fatih/aerium-first-run-url-rename.patch
 aerium-fatih/default-flags.patch
@@ -35,3 +34,5 @@ aerium-fatih/aerium-brand-shape.patch
 aerium-fatih/aerium-brand-surfaces.patch
 aerium-fatih/aerium-no-auto-pin-tab-groups.patch
 aerium-fatih/aerium-cleanup-subpage.patch
+aerium-fatih/aerium-update-checker.patch
+aerium-fatih/aerium-scheme.patch
