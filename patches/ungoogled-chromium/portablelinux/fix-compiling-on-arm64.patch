@@ -1,6 +1,6 @@
 --- a/build/toolchain/linux/BUILD.gn
 +++ b/build/toolchain/linux/BUILD.gn
-@@ -179,6 +179,13 @@ clang_v8_toolchain("clang_x64_v8_loong64
+@@ -179,6 +179,13 @@ clang_v8_toolchain("clang_x64_v8_loong64") {
    }
  }
  
@@ -14,18 +14,72 @@
  gcc_toolchain("x64") {
    cc = "gcc"
    cxx = "g++"
+--- a/tools/clang/scripts/build.py
++++ b/tools/clang/scripts/build.py
+@@ -557,6 +557,21 @@ def DownloadPinnedClang():
+                            PINNED_CLANG_VERSION)
+ 
+ 
++def GetHostSysrootPlatform():
++  assert sys.platform == 'linux', \
++    "This patch only applies to Linux, where platform.machine() is predictable"
++
++  arch = platform.machine()
++  return {
++    "aarch64": "arm64",
++    "aarch64_be": "arm64",
++    "armv7l": "arm",
++    "armv8b": "arm64",
++    "armv8l": "arm64",
++    "x86_64": "amd64",
++  }.get(arch, arch)
++
++
+ def VerifyVersionOfBuiltClangMatchesVERSION():
+   """Checks that `clang --version` outputs RELEASE_VERSION. If this
+   fails, update.RELEASE_VERSION is out-of-date and needs to be updated (possibly
+--- a/tools/rust/build_bindgen.py
++++ b/tools/rust/build_bindgen.py
+@@ -24,7 +24,7 @@ sys.path.append(
+                  'scripts'))
+ 
+ from build import (CheckoutGitRepo, DownloadAndUnpack, LLVM_BUILD_TOOLS_DIR,
+-                   DownloadDebianSysroot, RunCommand)
++                   DownloadDebianSysroot, GetHostSysrootPlatform, RunCommand)
+ from update import (RmTree)
+ 
+ # The git hash to use.  See https://github.com/rust-lang/rust-bindgen/tags.
+@@ -61,7 +61,7 @@ EXCLUDED_TESTS = [
+ def FetchNcurseswLibrary():
+     assert sys.platform.startswith('linux')
+     ncursesw_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, 'ncursesw')
+-    ncursesw_url = (f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH}'
++    ncursesw_url = (f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH.replace("amd64", GetHostSysrootPlatform())}'
+                     f'/+/version:2@{NCURSESW_CIPD_LINUX_AMD_VERSION}')
+ 
+     if os.path.exists(ncursesw_dir):
+@@ -141,7 +141,7 @@ def RunCargo(cargo_args):
+ 
+     if sys.platform.startswith('linux'):
+         # We use these flags to avoid linking with the system libstdc++.
+-        sysroot = DownloadDebianSysroot('amd64')
++        sysroot = DownloadDebianSysroot(GetHostSysrootPlatform())
+         sysroot_flag = f'--sysroot={sysroot}'
+         env['CFLAGS'] += f' {sysroot_flag}'
+         env['CXXFLAGS'] += f' {sysroot_flag}'
 --- a/tools/rust/build_rust.py
 +++ b/tools/rust/build_rust.py
-@@ -55,7 +55,7 @@ sys.path.append(
+@@ -56,7 +56,8 @@ sys.path.append(
                   'scripts'))
  
  from build import (AddCMakeToPath, AddZlibToPath, CheckoutGitRepo, CopyFile,
--                   DownloadDebianSysroot, GetLibXml2Dirs, GitCherryPick,
-+                   DownloadDebianSysroot, GetLibXml2Dirs, GetHostSysrootPlatform,
-                    GitRevert, LLVM_DIR, IsGitAncestorToHead,
-                    LLVM_BUILD_TOOLS_DIR, RunCommand)
- from update import (CHROMIUM_DIR, DownloadAndUnpack, EnsureDirExists,
-@@ -161,8 +161,8 @@ def AddOpenSSLToEnv():
+-                   DownloadDebianSysroot, FetchUrl, GetLibXml2Dirs,
++                   DownloadDebianSysroot, FetchUrl, GetHostSysrootPlatform,
++                   GetLibXml2Dirs,
+                    GitCherryPick, GitRevert, LLVM_DIR, IsGitAncestorToHead,
+                    LLVM_BUILD_TOOLS_DIR, RunCommand,
+                    DEFAULT_MACOSX_DEPLOYMENT_TARGET, GetLatestCommit)
+@@ -202,8 +203,8 @@ def AddOpenSSLToEnv():
          ssl_url = (f'{CIPD_DOWNLOAD_URL}/{OPENSSL_CIPD_WIN_AMD_PATH}'
                     f'/+/version:2@{OPENSSL_CIPD_WIN_AMD_VERSION}')
      else:
@@ -36,7 +90,7 @@
  
      if os.path.exists(ssl_dir):
          RmTree(ssl_dir)
-@@ -515,7 +515,7 @@ def RustTargetTriple():
+@@ -583,7 +584,7 @@ def RustTargetTriple():
      elif sys.platform == 'win32':
          return 'x86_64-pc-windows-msvc'
      else:
@@ -45,17 +99,17 @@
  
  
  # Build the LLVM libraries and install them .
-@@ -526,6 +526,9 @@ def BuildLLVMLibraries(skip_build):
-             sys.executable,
-             os.path.join(CLANG_SCRIPTS_DIR, 'build.py'),
-             '--disable-asserts',
+@@ -593,6 +594,9 @@ def BuildLLVMLibraries(skip_checkout, llvm_force_head_revision):
+         sys.executable,
+         os.path.join(CLANG_SCRIPTS_DIR, 'build.py'),
+         '--disable-asserts',
 +            '--use-system-cmake',
 +            '--host-cc=clang',
 +            '--host-cxx=clang++',
-             '--no-tools',
-             '--no-runtimes',
-             # PIC needed for Rust build (links LLVM into shared object)
-@@ -678,7 +681,8 @@ def main():
+         '--no-tools',
+         '--no-runtimes',
+         # PIC needed for Rust build (links LLVM into shared object)
+@@ -791,7 +795,8 @@ def main():
          # Fetch sysroot we build rustc against. This ensures a minimum supported
          # host (not Chromium target). Since the rustc linux package is for
          # x86_64 only, that is the sole needed sysroot.
@@ -78,9 +132,9 @@
 +rustflags = ["-Clink-arg=--sysroot=$DEBIAN_SYSROOT"]
 --- a/tools/rust/config.toml.template
 +++ b/tools/rust/config.toml.template
-@@ -87,3 +87,12 @@ cc = "$LLVM_BIN/clang"
- cxx = "$LLVM_BIN/clang++"
+@@ -93,3 +93,13 @@ cxx = "$LLVM_BIN/clang++"
  linker = "$LLVM_BIN/clang"
+ jemalloc = true
  
 +[target.aarch64-unknown-linux-gnu]
 +llvm-config = "$LLVM_BIN/llvm-config"
@@ -90,57 +144,5 @@
 +cc = "$LLVM_BIN/clang"
 +cxx = "$LLVM_BIN/clang++"
 +linker = "$LLVM_BIN/clang"
++jemalloc = true
 +
---- a/tools/rust/build_bindgen.py
-+++ b/tools/rust/build_bindgen.py
-@@ -23,7 +23,7 @@ sys.path.append(
-                  'scripts'))
- 
- from build import (CheckoutGitRepo, DownloadAndUnpack, LLVM_BUILD_TOOLS_DIR,
--                   DownloadDebianSysroot, RunCommand)
-+                   DownloadDebianSysroot, GetHostSysrootPlatform, RunCommand)
- from update import (RmTree)
- 
- # The git hash to use.
-@@ -66,7 +66,7 @@ def InstallRustBetaSysroot(rust_git_hash
- def FetchNcurseswLibrary():
-     assert sys.platform.startswith('linux')
-     ncursesw_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, 'ncursesw')
--    ncursesw_url = (f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH}'
-+    ncursesw_url = (f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH.replace("amd64", GetHostSysrootPlatform())}'
-                     f'/+/version:2@{NCURSESW_CIPD_LINUX_AMD_VERSION}')
- 
-     if os.path.exists(ncursesw_dir):
-@@ -146,7 +146,7 @@ def RunCargo(cargo_args):
- 
-     if sys.platform.startswith('linux'):
-         # We use these flags to avoid linking with the system libstdc++.
--        sysroot = DownloadDebianSysroot('amd64')
-+        sysroot = DownloadDebianSysroot(GetHostSysrootPlatform())
-         sysroot_flag = f'--sysroot={sysroot}'
-         env['CFLAGS'] += f' {sysroot_flag}'
-         env['CXXFLAGS'] += f' {sysroot_flag}'
---- a/tools/clang/scripts/build.py
-+++ b/tools/clang/scripts/build.py
-@@ -483,6 +483,21 @@ def DownloadPinnedClang():
-                            PINNED_CLANG_VERSION)
- 
- 
-+def GetHostSysrootPlatform():
-+  assert sys.platform == 'linux', \
-+    "This patch only applies to Linux, where platform.machine() is predictable"
-+
-+  arch = platform.machine()
-+  return {
-+    "aarch64": "arm64",
-+    "aarch64_be": "arm64",
-+    "armv7l": "arm",
-+    "armv8b": "arm64",
-+    "armv8l": "arm64",
-+    "x86_64": "amd64",
-+  }.get(arch, arch)
-+
-+
- def VerifyVersionOfBuiltClangMatchesVERSION():
-   """Checks that `clang --version` outputs RELEASE_VERSION. If this
-   fails, update.RELEASE_VERSION is out-of-date and needs to be updated (possibly
