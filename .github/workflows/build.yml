@@ -31,12 +31,25 @@ on:
       - '.github/actions/**'
       - '.github/scripts/**'
 
-# cancel-in-progress deliberately false, matching the Windows and Android
-# repos: a routine push must QUEUE behind a multi-hour build, not kill it.
-# To supersede a doomed run, cancel it manually first.
+# Only the newest commit builds. A push supersedes whatever is in flight,
+# because a build already compiling older sources cannot produce the artifact
+# anyone now wants - it would spend hours to ship a binary that is wrong the
+# moment it lands.
+#
+# This was false for a long time, for a real reason: pushes killed long builds.
+# What made that a loss rather than the intended behaviour was that ANY push
+# counted, including ones that changed nothing the build reads. The `paths`
+# filter above is what answers that - a CHANGELOG or README push does not start
+# a run here at all, so it cannot cancel one either. Superseding is then only
+# ever triggered by a commit that genuinely changes what would be compiled.
+#
+# auto-resume.yml already assumed this: its cancelled-run branch checks whether
+# the cancelled run's sha is still master's head and exits 0 when it is not,
+# under the comment "only the newest commit builds". That guard has been
+# waiting for this flag.
 concurrency:
   group: build-linux-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: write
