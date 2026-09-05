@@ -312,6 +312,7 @@ _aerium_check_targets=(
 # is wrong and would have failed the first run with a puzzling message.
 _aerium_preflight_targets=(
     "obj/chrome/browser/browsing_data/impl/aerium_site_rules.o"
+    "obj/chrome/browser/ui/ui/aerogel.o"
     "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
     "obj/chrome/browser/profiles/profiles_extra_parts_impl/chrome_browser_main_extra_parts_profiles.o"
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
