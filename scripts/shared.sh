@@ -312,6 +312,12 @@ _aerium_check_targets=(
 # is wrong and would have failed the first run with a puzzling message.
 _aerium_preflight_targets=(
     "obj/chrome/browser/browsing_data/impl/aerium_site_rules.o"
+    # Not Aerium-owned files, but the two upstream ones this project now adds
+    # real code to: timezone_controller.cc carries the time zone override, and
+    # about_flags.cc is where aerium_flag_entries.h and aerium_flag_choices.h
+    # are #included and therefore where a typo in either surfaces.
+    "obj/third_party/blink/renderer/core/core/timezone_controller.o"
+    "obj/chrome/browser/browser/about_flags.o"
     "obj/chrome/browser/ui/ui/aerogel.o"
     "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
     "obj/chrome/browser/profiles/profiles_extra_parts_impl/chrome_browser_main_extra_parts_profiles.o"
