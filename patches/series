@@ -43,3 +43,4 @@ aerium-fatih/aerium-aerogel-link.patch
 aerium-fatih/aerium-runtime-efficiency.patch
 aerium-fatih/aerium-timezone.patch
 aerium-fatih/aerium-audio-noise.patch
+aerium-fatih/aerium-local-font-access.patch
