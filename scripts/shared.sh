@@ -312,12 +312,21 @@ _aerium_check_targets=(
 # is wrong and would have failed the first run with a puzzling message.
 _aerium_preflight_targets=(
     "obj/chrome/browser/browsing_data/impl/aerium_site_rules.o"
-    # Not Aerium-owned files, but the two upstream ones this project now adds
-    # real code to: timezone_controller.cc carries the time zone override, and
-    # about_flags.cc is where aerium_flag_entries.h and aerium_flag_choices.h
-    # are #included and therefore where a typo in either surfaces.
+    # Not Aerium-owned files, but the upstream ones this project now adds real
+    # code to. timezone_controller.cc carries the time zone override,
+    # base_audio_context.cc the audio noise factor and realtime_analyser.cc the
+    # four call sites that use it, and about_flags.cc is where
+    # aerium_flag_entries.h and aerium_flag_choices.h are #included and
+    # therefore where a typo in either surfaces.
+    #
+    # The object paths are <source dir>/<gn target name>/<file>.o, which is why
+    # about_flags.o is under chrome/browser/core and not chrome/browser/browser
+    # - pre-flight 24 caught that guess and printed the right answer, which is
+    # what the "did you mean" suggestions exist for.
     "obj/third_party/blink/renderer/core/core/timezone_controller.o"
-    "obj/chrome/browser/browser/about_flags.o"
+    "obj/third_party/blink/renderer/modules/webaudio/webaudio/base_audio_context.o"
+    "obj/third_party/blink/renderer/modules/webaudio/webaudio/realtime_analyser.o"
+    "obj/chrome/browser/core/about_flags.o"
     "obj/chrome/browser/ui/ui/aerogel.o"
     "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
     "obj/chrome/browser/profiles/profiles_extra_parts_impl/chrome_browser_main_extra_parts_profiles.o"
