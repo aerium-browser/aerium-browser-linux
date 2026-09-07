@@ -330,6 +330,13 @@ _aerium_preflight_targets=(
     "obj/chrome/browser/ui/ui/aerogel.o"
     "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
     "obj/chrome/browser/profiles/profiles_extra_parts_impl/chrome_browser_main_extra_parts_profiles.o"
+    # aerium-widevine-fetch.patch puts a real update URL in one of these and a
+    # gate on the switch in the other. Both are listed in the source_set("impl")
+    # in chrome/browser/component_updater/BUILD.gn, which is where the "impl"
+    # in the path comes from - read out of that file, not guessed, since the
+    # sibling source_set("component_updater") is the more obvious wrong answer.
+    "obj/chrome/browser/component_updater/impl/registration.o"
+    "obj/chrome/browser/component_updater/impl/chrome_component_updater_configurator.o"
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
 )
 
