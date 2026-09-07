@@ -336,6 +336,11 @@ _aerium_preflight_targets=(
     # in the path comes from - read out of that file, not guessed, since the
     # sibling source_set("component_updater") is the more obvious wrong answer.
     "obj/chrome/browser/component_updater/impl/registration.o"
+    # chrome_web_ui_configs.cc is the only translation unit that includes
+    # aerium_newtab.h, so this is what puts a compiler in front of that page.
+    # source_set("configs") in chrome/browser/ui/webui/BUILD.gn is where the
+    # file is listed, which is where the "configs" in the path comes from.
+    "obj/chrome/browser/ui/webui/configs/chrome_web_ui_configs.o"
     "obj/chrome/browser/component_updater/impl/chrome_component_updater_configurator.o"
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
 )
