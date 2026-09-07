@@ -38,6 +38,7 @@ aerium-fatih/aerium-update-checker.patch
 aerium-fatih/aerium-update-app-menu.patch
 aerium-fatih/aerium-scheme.patch
 aerium-fatih/aerium-drm-media.patch
+aerium-fatih/aerium-widevine-fetch.patch
 aerium-fatih/aerium-dns-providers.patch
 aerium-fatih/aerium-aerogel.patch
 aerium-fatih/aerium-aerogel-link.patch
