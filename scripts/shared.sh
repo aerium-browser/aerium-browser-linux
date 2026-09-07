@@ -345,9 +345,20 @@ _aerium_preflight_targets=(
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
     # cr_elements carries the shared WebUI palette now, and build_webui lints
     # its CSS with the same stylelint that rejected the first version of the
-    # settings patch. The settings manifest above does not pull that lint in -
-    # it depends on cr_elements build_ts, and lint sits under the top-level
-    # group instead - so it is named here rather than assumed to come along.
+    # settings patch.
+    #
+    # This is belt and braces, not new coverage, and the commit that added it
+    # said otherwise. Pre-flight 40 did not name this target and ran
+    # //ui/webui/resources/cr_elements:lint_css anyway, at index 9287 of 12673;
+    # run 41, which does name it, ran the same target at the same index out of
+    # the same total. So it was already reachable through whatever pulls the
+    # per-directory lint groups in, and naming it changed nothing in the graph.
+    #
+    # It stays because reachable-by-accident is not the same as covered. The
+    # rest of this list exists on exactly that principle - see the note above
+    # about a target that silently compiles nothing - and if an upstream
+    # reshuffle drops that transitive edge, the shared palette would stop being
+    # linted with no signal at all. Named, it fails the graph check instead.
     "gen/ui/webui/resources/cr_elements/lint_css_result.txt"
 )
 
