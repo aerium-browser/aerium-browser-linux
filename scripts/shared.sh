@@ -343,6 +343,12 @@ _aerium_preflight_targets=(
     "obj/chrome/browser/ui/webui/configs/chrome_web_ui_configs.o"
     "obj/chrome/browser/component_updater/impl/chrome_component_updater_configurator.o"
     "gen/chrome/browser/resources/settings/build_ts_manifest.json"
+    # cr_elements carries the shared WebUI palette now, and build_webui lints
+    # its CSS with the same stylelint that rejected the first version of the
+    # settings patch. The settings manifest above does not pull that lint in -
+    # it depends on cr_elements build_ts, and lint sits under the top-level
+    # group instead - so it is named here rather than assumed to come along.
+    "gen/ui/webui/resources/cr_elements/lint_css_result.txt"
 )
 
 # Aerium: compile just the Aerium-owned sources, and nothing else.
