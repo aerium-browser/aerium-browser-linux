@@ -103,12 +103,16 @@
 + <h2>Recommended, free and open-source</h2><p>
 + None of these are installed automatically &mdash; they're just tools we think are worth knowing about.
 + Every one is free, open-source, and independently maintained.
++ To install tools from the Chrome Web Store, you will need the 
++ <a href="https://github.com/NeverDecaf/chromium-web-store/releases/latest" target="_blank" rel="noopener noreferrer">Chromium Web Store extension</a> first 
++ (scroll down to <strong>Assets</strong> and click the <code>.crx</code> file).
++ </p>
 + <div class="cards">
 +  <div class="card card-featured">
 +   <span class="card-badge">Recommended</span>
 +   <h3>uBlock Origin</h3>
 +   <p>Efficient, open-source content blocking.</p>
-+   <a class="card-cta" href="https://chromewebstore.google.com/detail/ublock-origin/cjpalhdlnbpafiamejdnhcphjbkeiagm">Install uBlock Origin</a>
++   <a class="card-cta" href="https://github.com/gorhill/uBlock/releases/latest">Install uBlock Origin</a>
 +  </div>
 +  <div class="card">
 +   <h3>uBlock Origin Lite</h3>
