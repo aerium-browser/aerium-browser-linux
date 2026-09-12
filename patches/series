@@ -52,3 +52,4 @@ aerium-fatih/aerium-local-font-access.patch
 aerium-fatih/aerium-webui-style.patch
 aerium-fatih/aerium-settings-style.patch
 aerium-fatih/aerium-doh-hardening.patch
+aerium-fatih/aerium-remove-glic-menu-item.patch
