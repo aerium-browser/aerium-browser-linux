@@ -1,0 +1,121 @@
+# UNVERIFIED. Not built, not run on a device or desktop machine. Written at
+# the explicit request of a user who chose "attempt it anyway, flagged" after
+# being told the honest cost: this is new C++ reasoning, not a flag flip, and
+# the usual verification this project relies on for that (patch -p1 --fuzz=0
+# against pristine Chromium, a mechanical sed-chain simulation) proves the
+# patch applies cleanly, not that the resulting binary behaves correctly. Do
+# not carry this into a release without an actual build and a real low-memory
+# run on Linux hardware.
+#
+# What this is: aerium-runtime-efficiency.patch enables
+# kInfiniteTabsFreezingOnMemoryPressure, which extends tab freezing to fire
+# under memory pressure - but only on Windows. The reason, read directly out
+# of FreezingPolicy::CheckMemoryPressureForFreezing() in pristine Chromium
+# rather than assumed: the function is written entirely inside
+# `#if BUILDFLAG(IS_WIN)`, with no Linux branch at all, and its own comment
+# in this repo's aerium-runtime-efficiency.patch already says as much - "the
+# branch that reads it is inside #if BUILDFLAG(IS_WIN) in freezing_policy.cc".
+#
+# What looked at first like a gap needing a whole new
+# SystemMemoryPressureEvaluator subclass (components/memory_pressure/, with
+# platform files for Windows/Mac/Fuchsia and none for Linux, confirmed by
+# reading components/memory_pressure/BUILD.gn directly) turns out not to be
+# the real mechanism this feature uses at all. CheckMemoryPressureForFreezing
+# does not go through that system - it calls base::GetSystemMemoryInfo()
+# directly, a much simpler, older API that base/process/process_metrics.h
+# documents as already cross-platform: "On Linux/Android/Chrome OS,
+# system-wide memory consumption data is parsed from /proc/meminfo and
+# /proc/vmstat. On Windows/Mac, it is obtained using system API calls." Linux
+# support already exists and is already used elsewhere in Chromium (the Task
+# Manager's memory column, among others) - this function just never asked it
+# the question because the guard around it never let Linux in the door.
+#
+# The one platform-specific detail inside the guarded block is
+# `info.avail_phys`, a field that base/process/process_metrics.h declares
+# only `#if BUILDFLAG(IS_WIN)` - Linux's available-memory estimate lives in a
+# same-shaped but differently-named field (`available`, sourced from the
+# kernel's own MemAvailable, present since Linux 3.14) guarded
+# `#if BUILDFLAG(IS_LINUX) || ...`. Rather than add a second platform branch
+# to read the right field name, this uses SystemMemoryInfo's own
+# GetAvailablePhysicalMemory() - declared right next to both fields as "a
+# cross-platform estimation of available physical memory" - which is what it
+# exists for. It is a no-op change on Windows: GlobalMemoryStatusEx already
+# populates avail_phys there, and GetAvailablePhysicalMemory() reads that
+# same field back on that platform.
+#
+# The percent threshold (kInfiniteTabsFreezingOnMemoryPressurePercent,
+# default 15) and the poll interval are both existing feature params already
+# enabled by aerium-runtime-efficiency.patch - nothing about the threshold or
+# cadence changes here, only which platforms the check runs on.
+#
+# Windows-only in this repo pair deliberately: the `|| BUILDFLAG(IS_LINUX)`
+# widening is inert on a Windows build (IS_WIN already made the guard true),
+# so carrying an identical no-op patch into the Windows repo would just be
+# diff for its own sake. This is the one place this project's "the two patch
+# sets are identical" rule is deliberately not followed, and the reason is
+# written here rather than left for PARITY.md to explain on its own.
+#
+# What is and is not verified:
+#   * base::GetSystemMemoryInfo() having a real, already-shipping Linux
+#     implementation, and SystemMemoryInfo::GetAvailablePhysicalMemory()
+#     existing as its documented cross-platform accessor - both read directly
+#     out of base/process/process_metrics.h at the pinned Chromium version,
+#     not assumed.
+#   * The two `#if BUILDFLAG(IS_WIN)` guards and the `avail_phys` read are
+#     exactly as pristine Chromium has them at this version - confirmed by
+#     fetching freezing_policy.cc itself, not recalled from memory.
+#   * The patch applies cleanly with `patch -p1 --fuzz=0` against a pristine
+#     copy of freezing_policy.cc at the pinned tag.
+#   * NOT verified: that FreezingPolicy's surrounding code has no other
+#     Windows-only assumption nearby that this reading missed. The function
+#     itself was read in full; the rest of the file was not.
+#   * NOT verified at all: that this compiles, or that a real Linux machine
+#     under genuine memory pressure freezes tabs the way it is meant to. No
+#     build was run, on this or any patch in this file.
+--- a/components/performance_manager/freezing/freezing_policy.cc
++++ b/components/performance_manager/freezing/freezing_policy.cc
+@@ -260,15 +260,15 @@
+     resource_usage_query_observation_.Observe(&resource_usage_query_.value());
+     resource_usage_query_->Start(kCPUMeasurementInterval);
+   }
+-#if BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+   if (base::FeatureList::IsEnabled(
+           features::kInfiniteTabsFreezingOnMemoryPressure)) {
+     memory_check_timer_.Start(
+         FROM_HERE,
+         features::kInfiniteTabsFreezingOnMemoryPressureInterval.Get(), this,
+         &FreezingPolicy::CheckMemoryPressureForFreezing);
+   }
+-#endif
++#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+ }
+ 
+ FreezingPolicy::~FreezingPolicy() = default;
+@@ -1420,9 +1420,9 @@
+ }
+ 
+ void FreezingPolicy::CheckMemoryPressureForFreezing() {
+-#if BUILDFLAG(IS_WIN)
++#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+   base::SystemMemoryInfo info;
+   if (!base::GetSystemMemoryInfo(&info)) {
+     // Cannot get system memory info, do nothing.
+     return;
+   }
+@@ -1437,3 +1437,3 @@
+   base::ByteSize total = info.total;
+-  base::ByteSize avail = info.avail_phys;
++  base::ByteSize avail = info.GetAvailablePhysicalMemory();
+ 
+@@ -1453,9 +1453,9 @@
+   // The state has changed. Update the flag and re-evaluate all pages.
+   is_under_memory_pressure_ = is_now_under_pressure;
+   UpdateAllPagesFrozenState();
+ 
+-#endif  // BUILDFLAG(IS_WIN)
++#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+ }
+ 
+ void FreezingPolicy::UpdateAllPagesFrozenState() {
+   const base::LiveTicks now = base::LiveTicks::Now();
