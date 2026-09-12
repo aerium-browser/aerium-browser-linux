@@ -40,8 +40,8 @@ _tarball_dir="$_release_dir/$_tarball_name"
 # branch) - so unlike Windows this needs no source patch, just the crx and
 # a manifest staged into out/Default/extensions before packaging.
 _cws_id="ocaahdebbfolfmndjeplogmgcagdmblk"
-_cws_version="1.5.5.3"
-_cws_sha256="326443baec3d204b1358eba6aa025cf6bd930c08a0b98f6784e7a3236528445b"
+_cws_version="1.5.5.4"
+_cws_sha256="63c075b4a25b11af2c536dad191946e8d9547f92d5b6c257b2ce4138d2996f32"
 _cws_dir="$_build_dir/src/out/Default/extensions"
 mkdir -p "$_cws_dir"
 if [ ! -f "$_cws_dir/chromium_web_store.crx" ]; then
