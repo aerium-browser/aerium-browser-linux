@@ -155,8 +155,22 @@ jobs:
           #
           # Whether any part actually finished is not a question the artifact
           # list can answer, so ask the jobs.
+          #
+          # "success" is the ordinary case. "cancelled" was added after run
+          # 34724250826: the build action's checkpoint-export steps now run
+          # on cancellation too (not just success - see .github/actions/build
+          # /action.yml), so a build_part killed by a runner dying mid-compile
+          # can still have exported a real, partial checkpoint rather than
+          # nothing. Before that fix a cancelled part never got a checkpoint
+          # of its own, so treating it as "nothing compiled" was correct; now
+          # it would wrongly throw away real progress and, worse, the
+          # `parts -eq 0` branch below actively treats a cancelled run as a
+          # deliberate stop and exits green without resuming it. This can't
+          # tell "cancelled with 90% done" from "cancelled 2 seconds in" -
+          # the auto-resume attempt cap two branches down is what keeps a
+          # near-zero-progress case from looping.
           parts=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
-            --jq '[.jobs[] | select(.conclusion == "success")
+            --jq '[.jobs[] | select(.conclusion == "success" or .conclusion == "cancelled")
                            | select(.name | contains("build_part_"))] | length')
           if [ "$parts" -eq 0 ]; then
             {

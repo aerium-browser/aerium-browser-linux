@@ -121,7 +121,25 @@ runs:
         retention-days: 10
         overwrite: true
 
+    # success(): the ordinary path, same as before. cancelled(): added after
+    # run 34724250826's arm64 leg was killed by a GitHub-hosted-runner
+    # shutdown signal mid-ninja (46% through) - before that, a cancelled job
+    # skipped every step below unconditionally (they had no `if:` at all, so
+    # GitHub's default "only if prior steps succeeded" treats a cancelled job
+    # the same as a failed one) and lost 100% of the compiling regardless of
+    # how far it got. export-cache.sh just tars up whatever is on disk right
+    # now - it has no dependency on ninja having exited cleanly, since an
+    # incomplete/incremental tree is exactly what a graceful timeout also
+    # checkpoints. `cancelled()` is deliberately not `always()`: a genuine
+    # compile error must still skip these (see the "Build" step's own
+    # comment) so a broken tree never overwrites the last good checkpoint.
+    #
+    # This is best-effort, not a guarantee - GitHub gives a cancelled job a
+    # grace window to run steps like these, but a runner that vanishes
+    # outright (rather than receiving and acting on a shutdown signal, the
+    # way arm64's did) gives nothing to run at all.
     - name: Export build cache
+      if: ${{ success() || cancelled() }}
       shell: bash
       run: bash ./.github/scripts/export-cache.sh
 
@@ -137,6 +155,7 @@ runs:
     # there is always one complete checkpoint on the run.
     - name: Pick a checkpoint slot
       id: save-slot
+      if: ${{ success() || cancelled() }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -144,6 +163,7 @@ runs:
       run: bash ./.github/scripts/checkpoint-slot.sh save
 
     - name: Upload build cache
+      if: ${{ success() || cancelled() }}
       uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.save-slot.outputs.target }}
@@ -154,7 +174,7 @@ runs:
     # checkpoint of storage for its retention period and nothing else - the
     # next restore picks the newer of the two by id either way.
     - name: Retire the previous checkpoint
-      if: ${{ steps.save-slot.outputs.previous_id != '' }}
+      if: ${{ (success() || cancelled()) && steps.save-slot.outputs.previous_id != '' }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
