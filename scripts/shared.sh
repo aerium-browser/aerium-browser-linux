@@ -198,6 +198,7 @@ setup_toolchain() {
     mkdir -p "${_src_dir}/third_party/cpython3/host/bin"
     ln -sf "$(which python3)" "${_src_dir}/third_party/cpython3/host/bin/python3"
     mkdir -p "${_src_dir}/third_party/typescript/linux-amd64/src/lib"
+    ln -sf "$(npm root -g)/typescript/lib"/*.d.ts "${_src_dir}/third_party/typescript/linux-amd64/src/lib/"
     ln -sf "$(which tsc)" "${_src_dir}/third_party/typescript/linux-amd64/src/lib/tsc"
 
     # Same reasoning as node/gperf/go above, for a tool the tarball does not
