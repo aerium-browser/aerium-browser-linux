@@ -195,6 +195,8 @@ setup_toolchain() {
     ln -sf "$(which gperf)" "${_src_dir}/third_party/gperf/cipd/bin/gperf"
     mkdir -p "${_src_dir}/third_party/dawn/tools/golang/linux-amd64/bin"
     ln -sf "$(which go)" "${_src_dir}/third_party/dawn/tools/golang/linux-amd64/bin/go"
+    mkdir -p "${_src_dir}/third_party/cpython3/host/bin"
+    ln -sf "$(which python3)" "${_src_dir}/third_party/cpython3/host/bin/python3"
 
     # Same reasoning as node/gperf/go above, for a tool the tarball does not
     # carry either. src/DEPS pulls buildtools/linux64-format from a GCS bucket
