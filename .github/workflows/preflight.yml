@@ -72,13 +72,13 @@ jobs:
       - name: Prepare the tree and compile
         run: bash ./scripts/docker-build.sh
 
-      - name: Upload search engine data diagnostic
+      - name: Print search engine data diagnostic
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: search-engines-data-diagnostic
-          path: |
-            build/src/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
-            build/src/third_party/search_engines_data/resources/definitions/regional_settings.json
-          if-no-files-found: warn
+        run: |
+          echo "=====BEGIN prepopulated_engines.json====="
+          cat build/src/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
+          echo "=====END prepopulated_engines.json====="
+          echo "=====BEGIN regional_settings.json====="
+          cat build/src/third_party/search_engines_data/resources/definitions/regional_settings.json
+          echo "=====END regional_settings.json====="
           retention-days: 1
