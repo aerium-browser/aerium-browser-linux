@@ -71,14 +71,3 @@ jobs:
 
       - name: Prepare the tree and compile
         run: bash ./scripts/docker-build.sh
-
-      - name: Print search engine data diagnostic
-        if: failure()
-        run: |
-          echo "=====BEGIN prepopulated_engines.json====="
-          cat build/src/third_party/search_engines_data/resources/definitions/prepopulated_engines.json
-          echo "=====END prepopulated_engines.json====="
-          echo "=====BEGIN regional_settings.json====="
-          cat build/src/third_party/search_engines_data/resources/definitions/regional_settings.json
-          echo "=====END regional_settings.json====="
-          retention-days: 1
