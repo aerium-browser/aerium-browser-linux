@@ -40,24 +40,23 @@
    fails, update.RELEASE_VERSION is out-of-date and needs to be updated (possibly
 --- a/tools/rust/build_bindgen.py
 +++ b/tools/rust/build_bindgen.py
-@@ -24,7 +24,7 @@ sys.path.append(
-                  'scripts'))
- 
- from build import (CheckoutGitRepo, DownloadAndUnpack, LLVM_BUILD_TOOLS_DIR,
--                   DownloadDebianSysroot, RunCommand)
-+                   DownloadDebianSysroot, GetHostSysrootPlatform, RunCommand)
- from update import (RmTree)
- 
- # The git hash to use.  See https://github.com/rust-lang/rust-bindgen/tags.
-@@ -61,7 +61,7 @@ EXCLUDED_TESTS = [
- def FetchNcurseswLibrary():
+@@ -35,6 +35,7 @@ sys.path.append(
+     DownloadAndUnpack,
+     LLVM_BUILD_TOOLS_DIR,
+     DownloadDebianSysroot,
++    GetHostSysrootPlatform,
+     RunCommand,
+ )
+ from update import RmTree
+@@ -78,7 +79,7 @@ def FetchNcurseswLibrary():
      assert sys.platform.startswith('linux')
      ncursesw_dir = os.path.join(LLVM_BUILD_TOOLS_DIR, 'ncursesw')
--    ncursesw_url = (f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH}'
-+    ncursesw_url = (f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH.replace("amd64", GetHostSysrootPlatform())}'
-                     f'/+/version:2@{NCURSESW_CIPD_LINUX_AMD_VERSION}')
+     ncursesw_url = (
+-        f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH}'
++        f'{CIPD_DOWNLOAD_URL}/{NCURSESW_CIPD_LINUX_AMD_PATH.replace("amd64", GetHostSysrootPlatform())}'
+         f'/+/version:2@{NCURSESW_CIPD_LINUX_AMD_VERSION}'
+     )
  
-     if os.path.exists(ncursesw_dir):
 @@ -141,7 +141,7 @@ def RunCargo(cargo_args):
  
      if sys.platform.startswith('linux'):
@@ -69,27 +68,23 @@
          env['CXXFLAGS'] += f' {sysroot_flag}'
 --- a/tools/rust/build_rust.py
 +++ b/tools/rust/build_rust.py
-@@ -56,7 +56,8 @@ sys.path.append(
-                  'scripts'))
- 
- from build import (AddCMakeToPath, AddZlibToPath, CheckoutGitRepo, CopyFile,
--                   DownloadDebianSysroot, FetchUrl, GetLibXml2Dirs,
-+                   DownloadDebianSysroot, FetchUrl, GetHostSysrootPlatform,
-+                   GetLibXml2Dirs,
-                    GitCherryPick, GitRevert, LLVM_DIR, IsGitAncestorToHead,
-                    LLVM_BUILD_TOOLS_DIR, RunCommand,
-                    DEFAULT_MACOSX_DEPLOYMENT_TARGET, GetLatestCommit)
-@@ -202,8 +203,8 @@ def AddOpenSSLToEnv():
-         ssl_url = (f'{CIPD_DOWNLOAD_URL}/{OPENSSL_CIPD_WIN_AMD_PATH}'
-                    f'/+/version:2@{OPENSSL_CIPD_WIN_AMD_VERSION}')
+@@ -63,6 +63,7 @@ sys.path.append(
+     CheckoutGitRepo,
+     CopyFile,
+     DownloadDebianSysroot,
++    GetHostSysrootPlatform,
+     FetchUrl,
+     GetLibXml2Dirs,
+     GitCherryPick,
+@@ -254,7 +255,7 @@ def AddOpenSSLToEnv():
+         )
      else:
--        ssl_url = (f'{CIPD_DOWNLOAD_URL}/{OPENSSL_CIPD_LINUX_AMD_PATH}'
--                   f'/+/version:2@{OPENSSL_CIPD_LINUX_AMD_VERSION}')
-+            ssl_url = (f'{CIPD_DOWNLOAD_URL}/{OPENSSL_CIPD_LINUX_AMD_PATH.replace("amd64", GetHostSysrootPlatform())}'
-+                    f'/+/version:2@{OPENSSL_CIPD_LINUX_AMD_VERSION}')
+         ssl_url = (
+-            f'{CIPD_DOWNLOAD_URL}/{OPENSSL_CIPD_LINUX_AMD_PATH}'
++            f'{CIPD_DOWNLOAD_URL}/{OPENSSL_CIPD_LINUX_AMD_PATH.replace("amd64", GetHostSysrootPlatform())}'
+             f'/+/version:2@{OPENSSL_CIPD_LINUX_AMD_VERSION}'
+         )
  
-     if os.path.exists(ssl_dir):
-         RmTree(ssl_dir)
 @@ -583,7 +584,7 @@ def RustTargetTriple():
      elif sys.platform == 'win32':
          return 'x86_64-pc-windows-msvc'
