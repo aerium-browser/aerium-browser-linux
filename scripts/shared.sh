@@ -200,6 +200,8 @@ setup_toolchain() {
     mkdir -p "${_src_dir}/third_party/typescript/linux-amd64/src"
     cp -aT "$(npm root -g)/typescript/lib" "${_src_dir}/third_party/typescript/linux-amd64/src/lib"
     cp -a "$(npm root -g)/typescript/bin/tsc" "${_src_dir}/third_party/typescript/linux-amd64/src/lib/tsc"
+    printf '{"type": "commonjs"}\n' \
+        > "${_src_dir}/third_party/typescript/linux-amd64/src/lib/package.json"
 
     # Same reasoning as node/gperf/go above, for a tool the tarball does not
     # carry either. src/DEPS pulls buildtools/linux64-format from a GCS bucket
