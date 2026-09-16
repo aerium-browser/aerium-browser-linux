@@ -204,8 +204,8 @@ setup_toolchain() {
         > "${_src_dir}/third_party/typescript/linux-amd64/src/lib/package.json"
 
     perl -0777 -pi -e '
-        my $n = s{^    innerHTML: string;$}{    innerHTML: string | TrustedHTML;}gm;
-        die "[aerium] FATAL: expected 2 innerHTML declarations in lib.dom.d.ts, rewrote $n - the stock TypeScript DOM lib types innerHTML as string, while Chromium WebUI assigns string|TrustedHTML to it\n" unless $n == 2;
+        my $n = s{^    innerHTML: string;$}{    get innerHTML(): string;\n    set innerHTML(value: string | TrustedHTML);}gm;
+        die "[aerium] FATAL: expected 2 innerHTML declarations in lib.dom.d.ts, rewrote $n - the stock TypeScript DOM lib types innerHTML as a plain string, while Chromium WebUI assigns string|TrustedHTML to it and reads it back as string\n" unless $n == 2;
     ' "${_src_dir}/third_party/typescript/linux-amd64/src/lib/lib.dom.d.ts"
 
     # Same reasoning as node/gperf/go above, for a tool the tarball does not
