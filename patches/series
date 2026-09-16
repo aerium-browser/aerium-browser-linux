@@ -44,8 +44,6 @@ aerium-fatih/aerium-scheme.patch
 aerium-fatih/aerium-drm-media.patch
 aerium-fatih/aerium-widevine-fetch.patch
 aerium-fatih/aerium-dns-providers.patch
-aerium-fatih/aerium-aerogel.patch
-aerium-fatih/aerium-aerogel-link.patch
 aerium-fatih/aerium-runtime-efficiency.patch
 aerium-fatih/aerium-linux-memory-pressure.patch
 aerium-fatih/aerium-timezone.patch

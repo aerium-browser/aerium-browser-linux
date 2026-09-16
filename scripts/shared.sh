@@ -334,7 +334,6 @@ _aerium_preflight_targets=(
     "obj/third_party/blink/renderer/modules/webaudio/webaudio/base_audio_context.o"
     "obj/third_party/blink/renderer/modules/webaudio/webaudio/realtime_analyser.o"
     "obj/chrome/browser/core/about_flags.o"
-    "obj/chrome/browser/ui/ui/aerogel.o"
     "obj/chrome/browser/browsing_data/impl/chrome_browsing_data_lifetime_manager.o"
     "obj/chrome/browser/profiles/profiles_extra_parts_impl/chrome_browser_main_extra_parts_profiles.o"
     # aerium-widevine-fetch.patch puts a real update URL in one of these and a
