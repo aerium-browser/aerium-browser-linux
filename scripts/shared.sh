@@ -208,6 +208,20 @@ setup_toolchain() {
         die "[aerium] FATAL: expected 2 innerHTML declarations in lib.dom.d.ts, rewrote $n - the stock TypeScript DOM lib types innerHTML as a plain string, while Chromium WebUI assigns string|TrustedHTML to it and reads it back as string\n" unless $n == 2;
     ' "${_src_dir}/third_party/typescript/linux-amd64/src/lib/lib.dom.d.ts"
 
+    _tsclib="${_src_dir}/third_party/typescript/linux-amd64/src/lib"
+    for _f in /opt/ts-newer/lib/node_modules/typescript/lib/lib.*.d.ts; do
+        [ -e "${_tsclib}/$(basename "$_f")" ] || cp -a "$_f" "${_tsclib}/"
+    done
+    _tsgo_missing=""
+    for _f in $(grep -o '"lib\.[^"]*\.d\.ts"' \
+            "${_src_dir}/third_party/typescript/tsgo.gni" | tr -d '"'); do
+        [ -e "${_tsclib}/${_f}" ] || _tsgo_missing="${_tsgo_missing} ${_f}"
+    done
+    if [ -n "$_tsgo_missing" ]; then
+        echo "[aerium] FATAL: tsgo.gni lists lib files the installed TypeScript does not ship:${_tsgo_missing}" >&2
+        exit 1
+    fi
+
     # Same reasoning as node/gperf/go above, for a tool the tarball does not
     # carry either. src/DEPS pulls buildtools/linux64-format from a GCS bucket
     # - "linux64" for every Linux host, arm64 included, per its own condition -
