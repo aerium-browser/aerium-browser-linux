@@ -13,7 +13,7 @@ RUN apt-get -y update && apt-get -y upgrade
 # install latest nodejs lts version
 RUN apt-get -y update && apt-get install -y apt-transport-https ca-certificates curl gnupg &&\
   curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
-RUN apt-get -y update && apt-get -y install nodejs && npm update -g npm && npm install -g typescript@6.0.0-beta
+RUN apt-get -y update && apt-get -y install nodejs && npm update -g npm && npm install -g typescript@5.9.2
 
 # install all needed (or wanted) distro packages
 # golang: dawn/tint generates real production sources with a Go program. gclient
