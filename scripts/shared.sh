@@ -197,21 +197,29 @@ setup_toolchain() {
     ln -sf "$(which go)" "${_src_dir}/third_party/dawn/tools/golang/linux-amd64/bin/go"
     mkdir -p "${_src_dir}/third_party/cpython3/host/bin"
     ln -sf "$(which python3)" "${_src_dir}/third_party/cpython3/host/bin/python3"
+    _tsclib="${_src_dir}/third_party/typescript/linux-amd64/src/lib"
     mkdir -p "${_src_dir}/third_party/typescript/linux-amd64/src"
-    cp -aT "$(npm root -g)/typescript/lib" "${_src_dir}/third_party/typescript/linux-amd64/src/lib"
-    cp -a "$(npm root -g)/typescript/bin/tsc" "${_src_dir}/third_party/typescript/linux-amd64/src/lib/tsc"
-    printf '{"type": "commonjs"}\n' \
-        > "${_src_dir}/third_party/typescript/linux-amd64/src/lib/package.json"
+    cp -aT "$(npm root -g)/typescript/lib" "${_tsclib}"
+    cp -a "$(npm root -g)/typescript/bin/tsc" "${_tsclib}/tsc"
+    printf '{"type": "commonjs"}\n' > "${_tsclib}/package.json"
+
+    _domlib=/opt/ts-dom/lib/node_modules/typescript/lib/lib.dom.d.ts
+    if [ ! -e "$_domlib" ]; then
+        echo "[aerium] FATAL: no lib.dom.d.ts at ${_domlib}" >&2
+        exit 1
+    fi
+    cp -a "$_domlib" "${_tsclib}/lib.dom.d.ts"
 
     perl -0777 -pi -e '
         my $n = s{^    innerHTML: string;$}{    get innerHTML(): string;\n    set innerHTML(value: string | TrustedHTML);}gm;
         die "[aerium] FATAL: expected 2 innerHTML declarations in lib.dom.d.ts, rewrote $n - the stock TypeScript DOM lib types innerHTML as a plain string, while Chromium WebUI assigns string|TrustedHTML to it and reads it back as string\n" unless $n == 2;
-    ' "${_src_dir}/third_party/typescript/linux-amd64/src/lib/lib.dom.d.ts"
+    ' "${_tsclib}/lib.dom.d.ts"
 
-    _tsclib="${_src_dir}/third_party/typescript/linux-amd64/src/lib"
-    for _f in /opt/ts-newer/lib/node_modules/typescript/lib/lib.*.d.ts; do
-        [ -e "${_tsclib}/$(basename "$_f")" ] || cp -a "$_f" "${_tsclib}/"
-    done
+    grep -q '^    hidden: boolean;$' "${_tsclib}/lib.dom.d.ts" || {
+        echo "[aerium] FATAL: lib.dom.d.ts does not type hidden as a plain boolean; Chromium WebUI assigns it to boolean" >&2
+        exit 1
+    }
+
     _tsgo_missing=""
     for _f in $(grep -o '"lib\.[^"]*\.d\.ts"' \
             "${_src_dir}/third_party/typescript/tsgo.gni" | tr -d '"'); do
