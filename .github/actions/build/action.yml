@@ -10,10 +10,6 @@ inputs:
     description: "If 'true', skip Docker image building and use existing image."
     required: false
     default: "false"
-  final:
-    description: "If 'true', this job is the last and should fail if it runs out of time"
-    required: false
-    default: "false"
   restore-run-id:
     description: "If set, download the build-cache artifact from this run id instead of the current run's (download-artifact's run-id+github-token params - same-run download-artifact can't see another run's artifacts). Only meaningful together with use-existing-image: true; the Docker image itself is always taken from the current run's own `prep` job, since rebuilding it is cheap and it isn't source-tree state."
     required: false
@@ -22,11 +18,18 @@ inputs:
 outputs:
   status:
     description: "Build status: 'running' if build isn't complete, 'completed' if it is."
-    value: ${{ steps.build.outputs.status }}
+    value: ${{ steps.result.outputs.status }}
+  deterministic:
+    description: "'true' when the build failed in a way that will reproduce, so the next stage must not run."
+    value: ${{ steps.result.outputs.deterministic }}
 
 runs:
   using: composite
   steps:
+    - name: Record stage start time
+      shell: bash
+      run: echo "STAGE_START_TS=$(date +%s)" >> "$GITHUB_ENV"
+
     - name: Download Docker image
       if: ${{ inputs.use-existing-image == 'true' }}
       uses: actions/download-artifact@v8
@@ -77,13 +80,13 @@ runs:
       shell: bash
       run: bash ./.github/scripts/import-cache.sh
 
-    - name: Build
-      id: build
+    - name: Build (first slice)
+      id: build1
       shell: bash
       env:
         _prepare_only: ${{ inputs.prepare-only }}
         _use_existing_image: ${{ inputs.use-existing-image }}
-        _gha_final: ${{ inputs.final }}
+        AERIUM_SLICE: '1'
       run: |
         # The step still fails exactly as before - the exit code is captured
         # only so a deterministic failure can be recorded on the way out, then
@@ -101,12 +104,98 @@ runs:
         bash ./scripts/docker-build.sh
         rc=$?
         if [ "$rc" != 0 ]; then
+          echo "deterministic=true" >> "$GITHUB_OUTPUT"
           mkdir -p .github/stage-status
           printf 'exit_code=%s\nrun_id=%s\ncommit=%s\narch=%s\n' \
             "$rc" "$GITHUB_RUN_ID" "$GITHUB_SHA" "${ARCH:-unknown}" \
             > .github/stage-status/build-error.txt
         fi
         exit $rc
+
+    - name: Export mid-stage build cache
+      if: ${{ steps.build1.outputs.status == 'running' }}
+      shell: bash
+      run: bash ./.github/scripts/export-cache.sh
+
+    - name: Pick a checkpoint slot (mid-stage)
+      id: save-slot-mid
+      if: ${{ steps.build1.outputs.status == 'running' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BASE: build-cache-${{ env.ARCH }}
+      run: bash ./.github/scripts/checkpoint-slot.sh save
+
+    - name: Upload mid-stage build cache
+      if: ${{ steps.build1.outputs.status == 'running' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.save-slot-mid.outputs.target }}
+        path: .github/cache/build-cache-${{ env.ARCH }}.tar.zst
+        if-no-files-found: error
+
+    - name: Retire the previous checkpoint (mid-stage)
+      if: ${{ steps.build1.outputs.status == 'running'
+              && steps.save-slot-mid.outputs.previous_id != '' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PREVIOUS_ID: ${{ steps.save-slot-mid.outputs.previous_id }}
+      run: |
+        gh api -X DELETE \
+          "repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS_ID" \
+          || echo "could not retire artifact $PREVIOUS_ID (non-fatal)"
+
+    - name: Drop the packed mid-stage archive
+      if: ${{ steps.build1.outputs.status == 'running' }}
+      shell: bash
+      run: rm -f .github/cache/build-cache-${{ env.ARCH }}.tar.zst
+
+    - name: Build (second slice)
+      id: build
+      if: ${{ steps.build1.outputs.status == 'running' }}
+      shell: bash
+      env:
+        _prepare_only: ${{ inputs.prepare-only }}
+        _use_existing_image: ${{ inputs.use-existing-image }}
+      run: |
+        # The step still fails exactly as before - the exit code is captured
+        # only so a deterministic failure can be recorded on the way out, then
+        # re-raised untouched. Nothing downstream sees a different status, so
+        # "Export build cache" still does not run after a failed build.
+        #
+        # A non-zero code here can only be a failure that reproduces.
+        # .github/scripts/build.sh converts the ordinary out-of-time case
+        # (ninja killed by `timeout`, rc 124) into status=running and exit 0
+        # before this point, so by the time a non-zero code reaches here it is
+        # a compile error, a patch failure, or a missing-output check. A
+        # runner death never gets here at all, and that is the case worth
+        # resuming.
+        set +e
+        bash ./scripts/docker-build.sh
+        rc=$?
+        if [ "$rc" != 0 ]; then
+          echo "deterministic=true" >> "$GITHUB_OUTPUT"
+          mkdir -p .github/stage-status
+          printf 'exit_code=%s\nrun_id=%s\ncommit=%s\narch=%s\n' \
+            "$rc" "$GITHUB_RUN_ID" "$GITHUB_SHA" "${ARCH:-unknown}" \
+            > .github/stage-status/build-error.txt
+        fi
+        exit $rc
+
+    - name: Resolve the part's result
+      id: result
+      if: ${{ always() }}
+      shell: bash
+      run: |
+        if [ "${{ steps.build1.outputs.status }}" = 'completed' ]; then
+          echo "status=completed" >> "$GITHUB_OUTPUT"
+        else
+          echo "status=${{ steps.build.outputs.status }}" >> "$GITHUB_OUTPUT"
+        fi
+        if [ "${{ steps.build1.outputs.deterministic }}${{ steps.build.outputs.deterministic }}" != '' ]; then
+          echo "deterministic=true" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Upload deterministic-failure marker
       # hashFiles is the guard that keeps this honest: it only matches when the

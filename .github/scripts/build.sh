@@ -27,7 +27,22 @@ if [ "${_preflight:-false}" = true ] || [ "${_prepare_only:-false}" = true ]; th
         aerium_preflight
     fi
 else
-    _task_timeout=18000
+    _job_timeout_min=${JOB_TIMEOUT_MIN:-350}
+    _elapsed_min=$(( ($(date +%s) - ${STAGE_START_TS:-$(date +%s)}) / 60 ))
+    _reserve_min=$_elapsed_min
+    [ "$_reserve_min" -lt 15 ] && _reserve_min=15
+    [ "$_reserve_min" -gt 90 ] && _reserve_min=90
+    _remaining_min=$(( _job_timeout_min - _elapsed_min - _reserve_min ))
+    if [ "$_remaining_min" -lt 15 ]; then
+        echo "No time left for compiling this part; continuing in next run."
+        echo "status=running" >> "$GITHUB_OUTPUT"
+        exit 0
+    fi
+    if [ "${AERIUM_SLICE:-2}" = 1 ]; then
+        _remaining_min=$(( _remaining_min / 2 ))
+    fi
+    echo "Restore took ${_elapsed_min}m; slice ${AERIUM_SLICE:-2} compiling for at most ${_remaining_min}m"
+    _task_timeout=$(( _remaining_min * 60 ))
     cd "$_src_dir"
 
     set +e
@@ -47,7 +62,7 @@ else
     rc=$?
     set -e
 
-    if [ "${_gha_final}" != "true" ] && [ "$rc" -eq 124 ]; then
+    if [ "$rc" -eq 124 ]; then
         echo "Task timed out after ${_task_timeout}s; continuing in next run."
         echo "status=running" >> "$GITHUB_OUTPUT"
         exit 0

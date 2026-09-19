@@ -21,7 +21,9 @@ fi
 _extra_env=()
 [ -n "${_prepare_only:-}" ] && _extra_env+=(-e "_prepare_only")
 [ -n "${_preflight:-}" ] && _extra_env+=(-e "_preflight")
-[ -n "${_gha_final:-}" ] && _extra_env+=(-e _gha_final)
+[ -n "${STAGE_START_TS:-}" ] && _extra_env+=(-e STAGE_START_TS)
+[ -n "${AERIUM_SLICE:-}" ] && _extra_env+=(-e AERIUM_SLICE)
+[ -n "${JOB_TIMEOUT_MIN:-}" ] && _extra_env+=(-e JOB_TIMEOUT_MIN)
 [ -n "${GITHUB_OUTPUT:-}" ] && _extra_env+=(-e GITHUB_OUTPUT)
 [ -n "${ARCH:-}" ] && _extra_env+=(-e ARCH)
 

@@ -50,7 +50,6 @@ jobs:
       _prepare_only: "false"
       _preflight: "true"
       _use_existing_image: "true"
-      _gha_final: "false"
     steps:
       - name: Clone repository
         uses: actions/checkout@v5

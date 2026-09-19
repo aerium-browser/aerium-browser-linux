@@ -60,9 +60,11 @@ jobs:
 
   build_part_01:
     runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: 350
     needs: prep
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -74,10 +76,14 @@ jobs:
 
   build_part_02:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_01.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_01.result != 'skipped'
+            && needs.build_part_01.outputs.deterministic != 'true'
+            && needs.build_part_01.outputs.status != 'completed' }}
     needs: build_part_01
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -87,10 +93,14 @@ jobs:
 
   build_part_03:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_02.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_02.result != 'skipped'
+            && needs.build_part_02.outputs.deterministic != 'true'
+            && needs.build_part_02.outputs.status != 'completed' }}
     needs: build_part_02
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -100,10 +110,14 @@ jobs:
 
   build_part_04:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_03.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_03.result != 'skipped'
+            && needs.build_part_03.outputs.deterministic != 'true'
+            && needs.build_part_03.outputs.status != 'completed' }}
     needs: build_part_03
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -113,10 +127,14 @@ jobs:
 
   build_part_05:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_04.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_04.result != 'skipped'
+            && needs.build_part_04.outputs.deterministic != 'true'
+            && needs.build_part_04.outputs.status != 'completed' }}
     needs: build_part_04
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -126,10 +144,14 @@ jobs:
 
   build_part_06:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_05.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_05.result != 'skipped'
+            && needs.build_part_05.outputs.deterministic != 'true'
+            && needs.build_part_05.outputs.status != 'completed' }}
     needs: build_part_05
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -139,10 +161,14 @@ jobs:
 
   build_part_07:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_06.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_06.result != 'skipped'
+            && needs.build_part_06.outputs.deterministic != 'true'
+            && needs.build_part_06.outputs.status != 'completed' }}
     needs: build_part_06
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -152,10 +178,14 @@ jobs:
 
   build_part_08:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_07.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_07.result != 'skipped'
+            && needs.build_part_07.outputs.deterministic != 'true'
+            && needs.build_part_07.outputs.status != 'completed' }}
     needs: build_part_07
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -165,10 +195,14 @@ jobs:
 
   build_part_09:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_08.outputs.status == 'running'
+    timeout-minutes: 350
+    if: ${{ !cancelled() && needs.build_part_08.result != 'skipped'
+            && needs.build_part_08.outputs.deterministic != 'true'
+            && needs.build_part_08.outputs.status != 'completed' }}
     needs: build_part_08
     outputs:
       status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
@@ -178,21 +212,45 @@ jobs:
 
   build_part_10:
     runs-on: ${{ inputs.runs-on }}
-    if: needs.build_part_09.outputs.status == 'running'
+    timeout-minutes: 350
+    outputs:
+      status: ${{ steps.build.outputs.status }}
+      deterministic: ${{ steps.build.outputs.deterministic }}
+    if: ${{ !cancelled() && needs.build_part_09.result != 'skipped'
+            && needs.build_part_09.outputs.deterministic != 'true'
+            && needs.build_part_09.outputs.status != 'completed' }}
     needs: build_part_09
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/build
-        with: { use-existing-image: true, final: true }
+        id: build
+        with: { use-existing-image: true }
 
   package:
     runs-on: ${{ inputs.runs-on }}
     if: ${{ !cancelled() && !failure()
             && contains(fromJSON('["success", "skipped"]'),
-                        needs.build_part_10.result) }}
+                        needs.build_part_10.result)
+            && needs.build_part_10.outputs.status != 'running' }}
     needs: build_part_10
     steps:
       - uses: actions/checkout@v5
         with: { submodules: true }
       - uses: ./.github/actions/package
+
+  complete:
+    runs-on: ubuntu-latest
+    needs: [build_part_10, package]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Verify the build finished and packaged
+        run: |
+          if [ "${{ needs.build_part_10.outputs.status }}" = 'running' ]; then
+            echo "Build did not finish within 10 parts; resume from the saved cache."
+            exit 1
+          fi
+          if [ "${{ needs.package.result }}" != 'success' ]; then
+            echo "Packaging did not succeed (result: ${{ needs.package.result }})."
+            exit 1
+          fi
