@@ -203,12 +203,22 @@ setup_toolchain() {
     cp -a "$(npm root -g)/typescript/bin/tsc" "${_tsclib}/tsc"
     printf '{"type": "commonjs"}\n' > "${_tsclib}/package.json"
 
-    _domlib=/opt/ts-dom/lib/node_modules/typescript/lib/lib.dom.d.ts
-    if [ ! -e "$_domlib" ]; then
-        echo "[aerium] FATAL: no lib.dom.d.ts at ${_domlib}" >&2
+    _domdir=/opt/ts-dom/lib/node_modules/typescript/lib
+    for _f in lib.dom.d.ts lib.dom.iterable.d.ts; do
+        if [ ! -e "${_domdir}/${_f}" ]; then
+            echo "[aerium] FATAL: no ${_f} at ${_domdir}" >&2
+            exit 1
+        fi
+        cp -a "${_domdir}/${_f}" "${_tsclib}/${_f}"
+    done
+
+    _iter_count=$(grep -c '\[Symbol.iterator\]' "${_tsclib}/lib.dom.iterable.d.ts" || true)
+    if [ "${_iter_count}" -lt 40 ]; then
+        echo "[aerium] FATAL: lib.dom.iterable.d.ts declares only ${_iter_count} Symbol.iterator members." >&2
+        echo "[aerium] It must come from the same TypeScript release as lib.dom.d.ts: 6.x moved these into" >&2
+        echo "[aerium] lib.dom.d.ts and left a stub here, so mixing the two drops every DOM iterator." >&2
         exit 1
     fi
-    cp -a "$_domlib" "${_tsclib}/lib.dom.d.ts"
 
     perl -0777 -pi -e '
         my $n = s{^    innerHTML: string;$}{    get innerHTML(): string;\n    set innerHTML(value: string | TrustedHTML);}gm;
